@@ -4,11 +4,14 @@
 MEMORY_DIR=".ccmemory"
 SESSION_FILE="$MEMORY_DIR/session.md"
 DOC_INDEX="$MEMORY_DIR/doc-index.md"
+DECISIONS="$MEMORY_DIR/decisions.md"
+INSIGHTS_DIR="$MEMORY_DIR/insights"
 PLUGIN_ROOT="$(dirname "$(dirname "$0")")"
 
 # Create .ccmemory directory if it doesn't exist
 if [ ! -d "$MEMORY_DIR" ]; then
     mkdir -p "$MEMORY_DIR"
+    mkdir -p "$INSIGHTS_DIR"
 
     # Copy templates
     if [ -f "$PLUGIN_ROOT/templates/doc-index.md" ]; then
@@ -17,14 +20,31 @@ if [ ! -d "$MEMORY_DIR" ]; then
     if [ -f "$PLUGIN_ROOT/templates/session-template.md" ]; then
         cp "$PLUGIN_ROOT/templates/session-template.md" "$SESSION_FILE"
     fi
+    if [ -f "$PLUGIN_ROOT/templates/decisions-log.md" ]; then
+        cp "$PLUGIN_ROOT/templates/decisions-log.md" "$DECISIONS"
+    fi
 
-    echo "CCMEMORY: Initialized .ccmemory/ directory. Edit doc-index.md to list your project docs."
+    echo ""
+    echo "<ccmemory-init>"
+    echo "Initialized .ccmemory/ directory with:"
+    echo "  - session.md (working memory / session handoff)"
+    echo "  - doc-index.md (documentation inventory)"
+    echo "  - decisions.md (decision log)"
+    echo "  - insights/ (realizations and analysis)"
+    echo ""
+    echo "Edit doc-index.md to list your project documentation."
+    echo "</ccmemory-init>"
 fi
 
-# Output session context if it exists
-if [ -f "$SESSION_FILE" ]; then
-    echo "CCMEMORY: Previous session context loaded from .ccmemory/session.md"
-    echo "---"
-    cat "$SESSION_FILE"
-    echo "---"
+# Output session context if it exists and has content
+if [ -f "$SESSION_FILE" ] && [ -s "$SESSION_FILE" ]; then
+    # Check if file has content beyond just the template
+    if grep -q "^## " "$SESSION_FILE" 2>/dev/null; then
+        echo ""
+        echo "<ccmemory-session>"
+        echo "Previous session context:"
+        echo ""
+        cat "$SESSION_FILE"
+        echo "</ccmemory-session>"
+    fi
 fi

@@ -16,8 +16,8 @@
         "matcher": "",
         "hooks": [
           {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/check-triggers.sh"
+            "type": "prompt",
+            "prompt": "${CLAUDE_PLUGIN_ROOT}/prompts/analyze-message.md"
           }
         ]
       }
@@ -26,6 +26,10 @@
       {
         "matcher": "",
         "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/log-session.py"
+          },
           {
             "type": "command",
             "command": "${CLAUDE_PLUGIN_ROOT}/scripts/save-memory.sh"

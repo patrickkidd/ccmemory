@@ -1,12 +1,13 @@
 {
-  "name": "ccmemory-marketplace",
-  "description": "Plugin marketplace for ccmemory",
+  "name": "ccmemory",
+  "owner": "patrickkidd",
+  "description": "Executive oversight for Claude Code context management",
   "plugins": [
     {
       "name": "ccmemory",
       "description": "Persistent context management for Claude Code. Stop re-explaining your project every session.",
       "version": "1.0.0",
-      "path": "https://github.com/patrickkidd/ccmemory"
+      "source": "."
     }
   ]
 }
