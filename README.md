@@ -4,10 +4,10 @@ A Claude Code plugin for persistent context management. Stop re-explaining your 
 
 ## What It Does
 
-- **Automatic session hooks** - Loads previous context at start, reminds to save at end
+- **Automatic trigger detection** - Detects corrections, decisions, preferences, and facts in your messages
+- **Session hooks** - Loads previous context at start, reminds to save at end
 - **Semantic memory** - Vector database for storing/retrieving project facts
-- **Doc index** - Makes your existing documentation discoverable
-- **Memory skill** - Teaches Claude how to use the memory system
+- **Memory skill** - Teaches Claude mandatory capture patterns
 
 ## Installation
 
@@ -39,23 +39,40 @@ npm install -g mcp-memory-service
 
 ### Automatic Hooks
 
-The plugin registers these hooks:
-
-| Event | Action |
-|-------|--------|
-| **SessionStart** | Creates `.ccmemory/` if missing, loads `session.md` context |
-| **UserPromptSubmit** | Analyzes each message for memory triggers, injects reminder |
-| **Stop** | Reminds you to update `session.md` before ending |
+| Event | Script | Action |
+|-------|--------|--------|
+| **SessionStart** | `load-memory.sh` | Creates `.ccmemory/` if missing, loads `session.md` context |
+| **UserPromptSubmit** | `check-triggers.sh` | Analyzes each message for memory triggers, injects reminder |
+| **Stop** | `save-memory.sh` | Reminds you to update `session.md` before ending |
 
 ### Trigger Detection
 
 The `UserPromptSubmit` hook automatically detects when you say things like:
-- **Corrections**: "No, that's wrong", "I already told you", "Stop doing X"
-- **Decisions**: "I've decided", "Let's use X", "The approach will be"
-- **Preferences**: "I prefer", "Always do X", "Never do Y"
-- **Facts**: "The way X works", "Watch out for", "Gotcha"
 
-When detected, Claude receives a reminder to store the information to memory.
+| Trigger Type | Example Patterns |
+|--------------|------------------|
+| **Corrections** | "No, that's wrong", "I already told you", "Stop doing X", "That's not how it works" |
+| **Decisions** | "I've decided", "Let's use X", "The approach will be", "We'll go with" |
+| **Preferences** | "I prefer", "Always do X", "Never do Y", "Make sure to" |
+| **Facts** | "The way X works", "Watch out for", "Gotcha", "This is because" |
+
+When detected, Claude receives:
+```
+<ccmemory-trigger type="CORRECTION">
+IMPORTANT: The user's message contains information that should be stored to memory.
+After processing this message, use the memory service to store the key information.
+Then confirm: "Stored to memory: [brief description]"
+</ccmemory-trigger>
+```
+
+### Memory Skill
+
+The plugin includes a skill (`skills/memory/SKILL.md`) that teaches Claude:
+
+- **Mandatory capture triggers** - When to store information (corrections highest priority)
+- **Self-check protocol** - After each message, check if any trigger fired
+- **Storage routing** - Memory service vs session.md vs project docs
+- **Session protocols** - What to do at start and end of sessions
 
 ### Project Structure
 
@@ -69,27 +86,20 @@ your-project/
     └── session.md     # Session handoff notes
 ```
 
-### Memory Skill
-
-The plugin includes a skill that teaches Claude:
-- How to check session context at start
-- When to store important facts
-- How to update session.md at end
-- How to use the doc-index
-
 ## Usage
 
 ### First Time Setup
 
 1. Install the plugin (see above)
-2. Start Claude Code in your project
-3. The plugin auto-creates `.ccmemory/`
-4. Edit `.ccmemory/doc-index.md` to list your project docs
+2. Install mcp-memory-service: `npm install -g mcp-memory-service`
+3. Start Claude Code in your project
+4. The plugin auto-creates `.ccmemory/`
+5. Edit `.ccmemory/doc-index.md` to list your project docs
 
 ### Each Session
 
 1. **Start**: Plugin loads previous session context automatically
-2. **Work**: Claude uses memory skill to track important facts
+2. **Work**: Trigger detection injects reminders when you share important info
 3. **End**: Plugin reminds you to update session.md
 
 ### Customizing doc-index.md
