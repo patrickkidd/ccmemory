@@ -44,7 +44,18 @@ The plugin registers these hooks:
 | Event | Action |
 |-------|--------|
 | **SessionStart** | Creates `.ccmemory/` if missing, loads `session.md` context |
+| **UserPromptSubmit** | Analyzes each message for memory triggers, injects reminder |
 | **Stop** | Reminds you to update `session.md` before ending |
+
+### Trigger Detection
+
+The `UserPromptSubmit` hook automatically detects when you say things like:
+- **Corrections**: "No, that's wrong", "I already told you", "Stop doing X"
+- **Decisions**: "I've decided", "Let's use X", "The approach will be"
+- **Preferences**: "I prefer", "Always do X", "Never do Y"
+- **Facts**: "The way X works", "Watch out for", "Gotcha"
+
+When detected, Claude receives a reminder to store the information to memory.
 
 ### Project Structure
 
@@ -100,9 +111,10 @@ ccmemory/
 ├── .claude-plugin/
 │   └── plugin.json        # Plugin manifest
 ├── hooks/
-│   └── hooks.json         # SessionStart/Stop hooks
+│   └── hooks.json         # SessionStart/UserPromptSubmit/Stop hooks
 ├── scripts/
 │   ├── load-memory.sh     # Runs at session start
+│   ├── check-triggers.sh  # Analyzes user messages for triggers
 │   └── save-memory.sh     # Runs at session end
 ├── skills/
 │   └── memory/
@@ -112,6 +124,23 @@ ccmemory/
 │   └── session-template.md
 └── .mcp.json              # Memory server config
 ```
+
+## Updating the Plugin
+
+### If installed via marketplace:
+
+```bash
+claude /plugin update ccmemory
+```
+
+### If installed locally (git clone):
+
+```bash
+cd ~/.claude/plugins/ccmemory
+git pull
+```
+
+Restart Claude Code after updating for changes to take effect.
 
 ## Requirements
 
