@@ -9,63 +9,98 @@ The ccmemory plugin provides persistent memory across Claude Code sessions via:
 2. **Session handoff** - `.ccmemory/session.md` for working memory
 3. **Doc index** - `.ccmemory/doc-index.md` for project documentation inventory
 
-## When to Use This Skill
+## MANDATORY: Capture Triggers
 
-Use this skill when:
-- Starting a new session (check session.md for context)
-- Learning something important about the project
-- Making architectural decisions
-- Ending a session (update session.md)
+You MUST store information to memory when ANY of these patterns occur:
 
-## Session Start Protocol
+### 1. User Corrections (Highest Priority)
+Recognize these patterns and IMMEDIATELY store the correction:
+- "No, that's wrong..." / "That's not how it works..."
+- "I already told you..." / "We discussed this..."
+- "Stop doing X" / "Don't assume Y"
+- "The actual way is..." / "It's actually..."
+- Any frustrated tone about repeated mistakes
+- Any time the user explains something you got wrong
 
-At the beginning of each session:
-1. Read `.ccmemory/session.md` for previous session context
-2. Check the doc-index for relevant documentation
-3. Query the memory service for related facts if needed
+**Response to corrections:**
+1. Acknowledge briefly (no over-apologizing)
+2. IMMEDIATELY store the correct information via memory service
+3. State: "Stored to memory: [brief description]"
+4. Continue with the corrected approach
 
-## Session End Protocol
+### 2. Project Facts
+Store when the user explains:
+- How a subsystem or component works
+- Project-specific patterns or conventions
+- Why something is done a certain way
+- Gotchas, edge cases, or "watch out for X"
+- Technology choices and their rationale
+- File organization or naming conventions
 
-Before ending a session, update `.ccmemory/session.md` with:
+### 3. Decisions
+Store when the user says:
+- "I've decided..." / "I'm going to..." / "I chose to..."
+- "Let's use X instead of Y"
+- "The approach will be..."
+- Any commitment after weighing options
 
-```markdown
-# Session Handoff
+### 4. Preferences
+Store when the user expresses:
+- Code style preferences
+- Tool or library preferences
+- Workflow preferences
+- "I prefer..." / "Always do X" / "Never do Y"
 
-Last updated: [current date/time]
+## How to Store Facts
 
-## Previous Session Summary
-[Brief summary of what was accomplished]
+Use the memory service tools to store facts. Each fact should include:
+- **What**: The specific information
+- **Context**: Why it matters or when it applies
+- **Source**: Where this came from (user statement, discovered during task)
 
-## What I Learned
-- [Key facts, patterns, or gotchas discovered]
-
-## Decisions Made
-- [Architectural or implementation decisions with reasoning]
-
-## Open Questions
-- [Unresolved items for next session]
-
-## Files Modified
-- [List of files changed this session]
+Example storage pattern:
+```
+Store: "Database migrations must use alembic, not raw SQL"
+Context: "Project convention for schema changes"
 ```
 
-## Storing Important Facts
+## Session Protocols
 
-When you learn something important about the project that should persist:
-1. Update the relevant documentation file (if one exists)
-2. Use the memory service to store the fact for semantic retrieval
-3. If it's session-specific, add it to session.md
+### Session Start
+1. Read `.ccmemory/session.md` for previous session context
+2. Query memory service for facts related to the current task
+3. Check doc-index for relevant documentation
+
+### Session End
+Update `.ccmemory/session.md` with:
+- Key learnings from this session
+- Decisions made (with reasoning)
+- Open questions
+- Files modified
 
 ## Documentation Index
 
-The `.ccmemory/doc-index.md` file lists all project documentation. Before starting a task:
-1. Check the doc-index for relevant files
-2. Read the relevant documentation before making changes
-3. Keep the doc-index updated when adding new documentation
+The `.ccmemory/doc-index.md` lists project documentation. Keep it updated when:
+- New documentation files are created
+- You discover undocumented but important files
+- Documentation structure changes
 
-## Memory Service Tools
+## Memory vs Session.md vs Docs
 
-The memory MCP server provides these capabilities:
-- Store facts with semantic embeddings
-- Retrieve relevant facts via natural language queries
-- The database is stored at `.ccmemory/chroma.db`
+| Information Type | Where to Store |
+|------------------|----------------|
+| Permanent project facts | Memory service |
+| Session-specific context | session.md |
+| Detailed documentation | Project doc files |
+| Quick reference facts | Memory service |
+| Corrections/gotchas | Memory service (highest priority) |
+
+## Self-Check
+
+After each user message, ask yourself:
+1. Did the user correct me? → Store immediately
+2. Did the user explain something about the project? → Store it
+3. Did the user make a decision? → Store it
+4. Did the user express a preference? → Store it
+
+If yes to any: use the memory service before continuing with the task.
