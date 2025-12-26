@@ -48,6 +48,16 @@ Monitor the information stream for:
 - Why something is done a certain way
 - Technology choices and rationale
 
+### Explicit Capture Requests (ALWAYS honor)
+
+- "Remember this...", "Remember that...", "Don't forget..."
+- "Document this...", "Add this to...", "Write this down..."
+- "Make a note...", "Note that...", "Keep track of..."
+- "Save this...", "Store this...", "Log this..."
+- "Update CLAUDE.md with...", "Add to the docs..."
+- "This is important:", "Key point:", "For future reference..."
+- Any direct instruction to persist information
+
 ## Output
 
 If important information detected, output:

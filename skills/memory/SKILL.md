@@ -47,6 +47,7 @@ Every user message is a stream of information. Your executive function monitors 
 ### What MUST Be Captured
 
 - **Corrections** - User fixing your understanding (HIGHEST PRIORITY)
+- **Explicit requests** - User telling you to remember/document something (ALWAYS honor)
 - **How things work** - Explanations of systems, components, patterns
 - **Why decisions were made** - Rationale, tradeoffs, constraints
 - **Conventions and rules** - "Always do X", "Never do Y", style preferences
