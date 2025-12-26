@@ -1,0 +1,8 @@
+{
+  "name": "ccmemory",
+  "version": "1.0.0",
+  "description": "Persistent context management for Claude Code. Stop re-explaining your project every session.",
+  "author": "Patrick Kidd",
+  "repository": "https://github.com/patrickkidd/ccmemory",
+  "license": "MIT"
+}

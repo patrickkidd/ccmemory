@@ -1,130 +1,122 @@
 # ccmemory
 
-Persistent context management for Claude Code. Stop re-explaining your project every session.
+A Claude Code plugin for persistent context management. Stop re-explaining your project every session.
 
 ## What It Does
 
-- **Semantic memory** - Automatically captures project context in a local vector database
-- **Doc index** - Makes your existing documentation searchable by Claude
-- **Session handoff** - Preserves working memory between sessions
-- **CLAUDE.md integration** - Routes Claude to the right docs for each task
+- **Automatic session hooks** - Loads previous context at start, reminds to save at end
+- **Semantic memory** - Vector database for storing/retrieving project facts
+- **Doc index** - Makes your existing documentation discoverable
+- **Memory skill** - Teaches Claude how to use the memory system
 
-## Quick Start
+## Installation
+
+### Option 1: From GitHub (Recommended)
 
 ```bash
-# In your project directory:
-git clone https://github.com/patrickkidd/ccmemory.git /tmp/ccmemory
-/tmp/ccmemory/setup.sh
+# Add the marketplace (one-time)
+claude /plugin add-marketplace https://raw.githubusercontent.com/patrickkidd/ccmemory/main/marketplace.json
 
-# Or one-liner:
-curl -sSL https://raw.githubusercontent.com/patrickkidd/ccmemory/main/setup.sh | bash
+# Install the plugin
+claude /plugin install ccmemory
 ```
 
-## What Gets Installed
+### Option 2: Local Installation
+
+```bash
+git clone https://github.com/patrickkidd/ccmemory.git ~/.claude/plugins/ccmemory
+```
+
+### Prerequisite: mcp-memory-service
+
+The plugin requires mcp-memory-service for semantic memory:
+
+```bash
+npm install -g mcp-memory-service
+```
+
+## How It Works
+
+### Automatic Hooks
+
+The plugin registers these hooks:
+
+| Event | Action |
+|-------|--------|
+| **SessionStart** | Creates `.ccmemory/` if missing, loads `session.md` context |
+| **Stop** | Reminds you to update `session.md` before ending |
+
+### Project Structure
+
+On first session in a project, the plugin creates:
 
 ```
 your-project/
 └── .ccmemory/
-    ├── chroma.db           # Vector database (auto-created)
-    ├── doc-index.md        # Your doc inventory (you customize)
-    ├── session.md          # Current session state
-    └── session-template.md # Template for new sessions
+    ├── chroma.db      # Vector database (auto-created by memory service)
+    ├── doc-index.md   # Your documentation inventory
+    └── session.md     # Session handoff notes
 ```
 
-Plus additions to:
-- `.mcp.json` - Memory server configuration
-- `.gitignore` - Excludes `.ccmemory/`
+### Memory Skill
 
-## Manual Setup
+The plugin includes a skill that teaches Claude:
+- How to check session context at start
+- When to store important facts
+- How to update session.md at end
+- How to use the doc-index
 
-If you prefer not to run the script:
+## Usage
 
-1. **Install mcp-memory-service:**
-   ```bash
-   npm install -g mcp-memory-service
-   ```
+### First Time Setup
 
-2. **Create directory:**
-   ```bash
-   mkdir .ccmemory
-   ```
+1. Install the plugin (see above)
+2. Start Claude Code in your project
+3. The plugin auto-creates `.ccmemory/`
+4. Edit `.ccmemory/doc-index.md` to list your project docs
 
-3. **Add to `.mcp.json`** (create if doesn't exist):
-   ```json
-   {
-     "mcpServers": {
-       "memory": {
-         "command": "mcp-memory-service",
-         "args": ["--db-path", ".ccmemory/chroma.db"]
-       }
-     }
-   }
-   ```
+### Each Session
 
-4. **Add to `.gitignore`:**
-   ```
-   .ccmemory/
-   ```
+1. **Start**: Plugin loads previous session context automatically
+2. **Work**: Claude uses memory skill to track important facts
+3. **End**: Plugin reminds you to update session.md
 
-5. **Copy templates:**
-   ```bash
-   cp templates/doc-index.md .ccmemory/
-   cp templates/session-template.md .ccmemory/
-   ```
+### Customizing doc-index.md
 
-6. **Customize `doc-index.md`** with your project's documentation.
-
-## Customizing Your Doc Index
-
-Edit `.ccmemory/doc-index.md` to list your project's documentation:
+List your project's documentation:
 
 ```markdown
 | File | Purpose |
 |------|---------|
 | docs/API.md | REST API reference |
 | docs/ARCHITECTURE.md | System design overview |
-| src/README.md | Code organization |
+| CLAUDE.md | Project-specific Claude instructions |
 ```
 
-This helps the memory service find relevant context for each task.
+## Plugin Structure
 
-## Session Handoff
-
-At the end of each Claude Code session, update `.ccmemory/session.md` with:
-- What you learned
-- Decisions made
-- Open questions
-- Files modified
-
-This gives the next session immediate context.
-
-## CLAUDE.md Integration
-
-Add this to your project's `CLAUDE.md` for automatic session handoff:
-
-```markdown
-## Session Handoff (MANDATORY)
-
-Before ending any session:
-1. Read `.ccmemory/session.md` for previous context
-2. Update `.ccmemory/session.md` with:
-   - Key learnings from this session
-   - Decisions made
-   - Open questions
-   - Files modified
 ```
-
-## How It Works
-
-1. **mcp-memory-service** runs as an MCP server, providing Claude with memory tools
-2. Claude can store and retrieve facts via semantic search (ChromaDB)
-3. Your **doc-index** gets ingested for better context retrieval
-4. **Session handoff** preserves working memory in plain markdown
+ccmemory/
+├── .claude-plugin/
+│   └── plugin.json        # Plugin manifest
+├── hooks/
+│   └── hooks.json         # SessionStart/Stop hooks
+├── scripts/
+│   ├── load-memory.sh     # Runs at session start
+│   └── save-memory.sh     # Runs at session end
+├── skills/
+│   └── memory/
+│       └── SKILL.md       # Memory management skill
+├── templates/
+│   ├── doc-index.md       # Doc inventory template
+│   └── session-template.md
+└── .mcp.json              # Memory server config
+```
 
 ## Requirements
 
-- Node.js 18+ (for mcp-memory-service)
 - Claude Code CLI
+- Node.js 18+ (for mcp-memory-service)
 
 ## License
 
