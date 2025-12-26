@@ -56,9 +56,26 @@ The plugin treats project documentation as a normalized encyclopedia:
 
 ## Installation
 
+Add the marketplace and install:
+
 ```bash
-git clone https://github.com/patrickkidd/ccmemory.git ~/.claude/plugins/ccmemory
+claude plugin marketplace add patrickkidd/ccmemory
+claude plugin install ccmemory
 ```
+
+Then restart Claude Code. Verify with `/plugins`.
+
+## Updating
+
+After the plugin is updated on GitHub:
+
+```bash
+claude plugin marketplace update ccmemory
+```
+
+Then restart Claude Code to pick up the changes.
+
+**Note:** Script changes (`.sh`, `.py`) take effect immediately on next hook trigger. Changes to hooks, skills, or prompts require a restart.
 
 ## What It Creates
 
