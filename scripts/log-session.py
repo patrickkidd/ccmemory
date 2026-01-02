@@ -16,11 +16,19 @@ Directory structure:
 """
 
 import json
+import os
 import re
 import sys
 import shutil
 from pathlib import Path
 from datetime import datetime
+
+
+def log_debug(msg: str):
+    if os.environ.get('CCMEMORY_DEBUG') == '1':
+        log_file = Path.home() / '.ccmemory-debug.log'
+        with open(log_file, 'a') as f:
+            f.write(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] {msg}\n")
 
 
 def strip_system_tags(text: str) -> str:
@@ -195,9 +203,12 @@ def sanitize_filename(title: str) -> str:
 
 
 def main():
+    log_debug("Stop hook (log-session.py) fired")
     try:
         hook_input = json.load(sys.stdin)
+        log_debug(f"Hook input keys: {list(hook_input.keys())}")
     except json.JSONDecodeError:
+        log_debug("Failed to parse hook input JSON")
         print("Failed to parse hook input", file=sys.stderr)
         sys.exit(1)
 
@@ -205,6 +216,7 @@ def main():
     transcript_path = hook_input.get('transcript_path', '')
     reason = hook_input.get('reason', 'unknown')
     cwd = hook_input.get('cwd', '')
+    log_debug(f"Session: {session_id}, reason: {reason}, cwd: {cwd}")
 
     if not transcript_path:
         print("No transcript path provided", file=sys.stderr)

@@ -2,6 +2,16 @@
 # Load memory context at session start
 
 MEMORY_DIR=".ccmemory"
+LOG_FILE="$HOME/.ccmemory-debug.log"
+
+# Debug logging (set CCMEMORY_DEBUG=1 to enable)
+log_debug() {
+    if [ "${CCMEMORY_DEBUG:-0}" = "1" ]; then
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" >> "$LOG_FILE"
+    fi
+}
+
+log_debug "SessionStart hook fired in: $(pwd)"
 SESSION_FILE="$MEMORY_DIR/session.md"
 DOC_INDEX="$MEMORY_DIR/doc-index.md"
 DECISIONS="$MEMORY_DIR/decisions.md"
@@ -40,11 +50,20 @@ fi
 if [ -f "$SESSION_FILE" ] && [ -s "$SESSION_FILE" ]; then
     # Check if file has content beyond just the template
     if grep -q "^## " "$SESSION_FILE" 2>/dev/null; then
+        log_debug "Loading session context from $SESSION_FILE"
         echo ""
         echo "<ccmemory-session>"
         echo "Previous session context:"
         echo ""
         cat "$SESSION_FILE"
         echo "</ccmemory-session>"
+    else
+        log_debug "session.md exists but no ## headers found"
     fi
+else
+    log_debug "No session.md or empty"
 fi
+
+# Always output a brief confirmation
+echo ""
+echo "<ccmemory status=\"active\" dir=\"$(pwd)\" />"
