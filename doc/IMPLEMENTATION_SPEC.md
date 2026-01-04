@@ -1,8 +1,22 @@
-# Implementation Specification: ccmemory-graph
+# ccmemory-graph: Persistent Memory for Claude Code
+
+**A plugin that gives Claude Code institutional memory across any domain.**
+
+## What It Does
+
+ccmemory-graph captures how understanding evolves — decisions made, corrections received, exceptions granted, patterns discovered. This context persists across sessions, making each conversation build on the last.
+
+**The problem**: Every Claude Code session generates valuable context that's lost when the session ends. You re-explain constraints. You re-discover patterns. Accumulated understanding never compounds.
+
+**The solution**: A memory layer that captures trajectories *as they happen* — in the flow of work, not as an afterthought. The graph accumulates organically, then surfaces relevant precedent in future sessions.
+
+**Domain-agnostic**: Works equally for software projects, career consulting, medical research, or any complex domain. The project determines context; the plugin provides memory.
 
 ## Purpose
 
 This document specifies exactly what needs to be built to make the Universal Context Graph operational. It is written for a developer (human or AI) to execute without further architectural guidance.
+
+See [UNIVERSAL_CONTEXT_GRAPH.md](UNIVERSAL_CONTEXT_GRAPH.md) for the full conceptual architecture.
 
 ## Deliverable
 
@@ -12,6 +26,54 @@ A Claude Code plugin that:
 3. Captures decisions, corrections, exceptions from sessions
 4. Provides MCP tools for querying the graph
 5. Injects relevant context at session start
+
+## Deployment Models
+
+### Individual Mode
+
+One Neo4j container per machine, shared across all your projects:
+
+```
+Your Machine
+└── Neo4j Docker Container (single instance)
+    ├── Project: my-app          (isolated by project property)
+    ├── Project: career          (isolated by project property)
+    └── Project: health-research (isolated by project property)
+```
+
+### Team Mode
+
+Centralized Neo4j server, shared across team members:
+
+```
+Team Neo4j Server (hosted, accessible to team)
+    ↑
+    │ bolt://team-server:7687
+    ├─── Developer A's Claude Code (CCMEMORY_USER_ID=alice)
+    ├─── Developer B's Claude Code (CCMEMORY_USER_ID=bob)
+    └─── Developer C's Claude Code (CCMEMORY_USER_ID=charlie)
+```
+
+**Visibility rules**:
+- Curated decisions: visible to all team members
+- Developmental decisions: only visible to creator (filtered by `user_id`)
+
+**Environment configuration** (each developer's machine):
+```bash
+export CCMEMORY_USER_ID="alice"  # or $(git config user.email)
+export CCMEMORY_NEO4J_URI="bolt://team-server:7687"
+export CCMEMORY_NEO4J_PASSWORD="team-password"
+```
+
+### Terminology
+
+| Term | Description |
+|------|-------------|
+| `developmental` | Decisions captured during active work, not yet promoted |
+| `curated` | Decisions promoted to permanent record, queryable in future sessions |
+| `branch` | Git branch name (for software projects) or work stream identifier |
+| `project` | Folder/repository name, isolates decisions between contexts |
+| `user_id` | Developer identity (team mode), filters developmental decisions |
 
 ## Repository Structure
 
@@ -79,7 +141,7 @@ ccmemory-graph/
   "version": "0.1.0",
   "description": "Universal context graph for decision traces and pattern detection",
   "author": "Patrick Kidd",
-  "homepage": "https://github.com/patrickkidd/ccmemory-graph",
+  "homepage": "https://github.com/patrickkidd/ccmemory",
   "hooks": "./hooks/hooks.json",
   "skills": ["./skills/context-graph"],
   "mcp_servers": {
@@ -145,7 +207,11 @@ CREATE CONSTRAINT project_name IF NOT EXISTS FOR (p:Project) REQUIRE p.name IS U
 // Indexes
 CREATE INDEX session_project IF NOT EXISTS FOR (s:Session) ON (s.project);
 CREATE INDEX session_time IF NOT EXISTS FOR (s:Session) ON (s.started_at);
+CREATE INDEX session_user IF NOT EXISTS FOR (s:Session) ON (s.user_id);
 CREATE INDEX decision_time IF NOT EXISTS FOR (d:Decision) ON (d.timestamp);
+CREATE INDEX decision_status IF NOT EXISTS FOR (d:Decision) ON (d.status);
+CREATE INDEX decision_branch IF NOT EXISTS FOR (d:Decision) ON (d.branch);
+CREATE INDEX decision_project_status IF NOT EXISTS FOR (d:Decision) ON (d.project, d.status);
 
 // Full-text search
 CREATE FULLTEXT INDEX decision_search IF NOT EXISTS
@@ -673,6 +739,100 @@ echo "ccmemory-graph stopped."
 8. **Skill file** — Instructions for Claude
 9. **Polish** — Error handling, edge cases
 
+## Promotion Workflows
+
+Decisions start as `developmental` and become `curated` when promoted.
+
+### Manual Promotion
+
+```bash
+ccmemory promote --project my-project
+```
+
+### Automatic Promotion (Software Projects)
+
+**Post-commit hook** (single developer, CD pattern):
+```bash
+#!/bin/bash
+# .git/hooks/post-commit
+BRANCH=$(git branch --show-current)
+PROJECT=$(basename $(pwd))
+if [ "$BRANCH" = "main" ] || [ "$BRANCH" = "master" ]; then
+    ccmemory promote --project "$PROJECT" --branch "$BRANCH" 2>/dev/null || true
+fi
+```
+
+**Post-merge hook** (teams with PR review):
+```bash
+#!/bin/bash
+# .git/hooks/post-merge
+BRANCH=$(git branch --show-current)
+PROJECT=$(basename $(pwd))
+if [ "$BRANCH" = "main" ] || [ "$BRANCH" = "master" ]; then
+    ccmemory promote --project "$PROJECT" --branch "$BRANCH"
+fi
+```
+
+## Test Specification
+
+Uses pytest. Structure:
+
+```
+tests/
+├── conftest.py             # Shared fixtures, Neo4j container management
+├── unit/                   # No external dependencies, fast
+│   ├── test_detection.py   # Decision/correction pattern detection
+│   └── test_tools.py       # MCP tool functions (mocked DB)
+├── integration/            # Requires Neo4j
+│   ├── test_graph.py       # CRUD operations
+│   └── test_promotion.py   # Promotion workflows
+└── e2e/                    # Full workflows
+    ├── test_single_user.py # Individual mode workflow
+    └── test_cross_project.py # Multi-project isolation
+```
+
+### pytest Configuration
+
+In `pyproject.toml`:
+```toml
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short"
+markers = [
+    "unit: Unit tests (no external dependencies)",
+    "integration: Integration tests (requires Neo4j)",
+    "e2e: End-to-end tests (full workflow)",
+    "slow: Tests that take >1s",
+]
+```
+
+### Key Test Cases
+
+**Unit:**
+- `test_detect_explicit_decision` — "Let's go with X" detected
+- `test_detect_correction` — "Actually, that's wrong" detected
+- `test_no_decision_in_question` — Questions not falsely detected
+
+**Integration:**
+- `test_create_and_query_decision` — CRUD works
+- `test_promote_decisions` — developmental → curated
+- `test_project_isolation` — Project A can't see Project B
+
+**E2E:**
+- `test_full_workflow` — Session → capture → promote → query in new session
+- `test_multiple_projects_isolated` — Different projects stay isolated
+
+### Running Tests
+
+```bash
+pytest tests/unit -v              # Fast, no deps
+pytest tests/integration -v       # Requires Neo4j
+pytest tests/e2e -v               # Full workflows
+pytest --cov=ccmemory_graph       # With coverage
+```
+
 ## Testing Checklist
 
 - [ ] `docker-compose up` starts Neo4j
@@ -683,6 +843,7 @@ echo "ccmemory-graph stopped."
 - [ ] Session end hook fires
 - [ ] `query_context` returns results
 - [ ] `search_precedent` finds relevant decisions
+- [ ] All pytest tests pass
 
 ## First Use
 
