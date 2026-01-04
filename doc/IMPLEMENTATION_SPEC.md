@@ -202,6 +202,7 @@ CREATE CONSTRAINT decision_id IF NOT EXISTS FOR (d:Decision) REQUIRE d.id IS UNI
 CREATE CONSTRAINT correction_id IF NOT EXISTS FOR (c:Correction) REQUIRE c.id IS UNIQUE;
 CREATE CONSTRAINT exception_id IF NOT EXISTS FOR (e:Exception) REQUIRE e.id IS UNIQUE;
 CREATE CONSTRAINT observation_id IF NOT EXISTS FOR (o:Observation) REQUIRE o.id IS UNIQUE;
+CREATE CONSTRAINT insight_id IF NOT EXISTS FOR (i:Insight) REQUIRE i.id IS UNIQUE;
 CREATE CONSTRAINT project_name IF NOT EXISTS FOR (p:Project) REQUIRE p.name IS UNIQUE;
 
 // Indexes
@@ -212,13 +213,33 @@ CREATE INDEX decision_time IF NOT EXISTS FOR (d:Decision) ON (d.timestamp);
 CREATE INDEX decision_status IF NOT EXISTS FOR (d:Decision) ON (d.status);
 CREATE INDEX decision_branch IF NOT EXISTS FOR (d:Decision) ON (d.branch);
 CREATE INDEX decision_project_status IF NOT EXISTS FOR (d:Decision) ON (d.project, d.status);
+CREATE INDEX insight_category IF NOT EXISTS FOR (i:Insight) ON (i.category);
 
 // Full-text search
 CREATE FULLTEXT INDEX decision_search IF NOT EXISTS
-  FOR (d:Decision) ON EACH [d.description, d.rationale];
+  FOR (d:Decision) ON EACH [d.description, d.rationale, d.revisit_trigger];
 CREATE FULLTEXT INDEX correction_search IF NOT EXISTS
   FOR (c:Correction) ON EACH [c.wrong_belief, c.right_belief];
+CREATE FULLTEXT INDEX insight_search IF NOT EXISTS
+  FOR (i:Insight) ON EACH [i.summary, i.detail, i.implications];
 ```
+
+**Decision Node Properties:**
+- `id`, `timestamp`, `project`, `branch`, `status` — standard
+- `description` — what was decided
+- `options_considered` — alternatives weighed
+- `rationale` — reasoning behind the choice
+- `decision_status` — "tentative" or "committed" (tentative = framework, committed = locked)
+- `revisit_trigger` — conditions that would prompt reconsideration (critical for living decisions)
+- `sets_precedent` — whether this sets a pattern for similar future decisions
+
+**Insight Node Properties:**
+- `id`, `timestamp`, `project`
+- `category` — "realization", "analysis", "strategy", "personal", "synthesis"
+- `summary` — 1-3 sentence summary
+- `detail` — full insight content
+- `implications` — what this means for decisions/strategy
+- `trigger` — what prompted this insight
 
 ### 4. MCP Server
 
@@ -556,7 +577,9 @@ If this is a decision, output JSON:
     "options_considered": ["..."],
     "choice": "...",
     "rationale": "...",
-    "sets_precedent": true/false
+    "sets_precedent": true/false,
+    "status": "tentative" | "committed",
+    "revisit_trigger": "..."  // Conditions that would prompt reconsideration
   }
 }
 
@@ -632,6 +655,45 @@ If not an exception:
 }
 ```
 
+**File:** `prompts/detect_insight.md`
+
+```markdown
+Analyze this exchange for insights worth preserving.
+
+CONVERSATION CONTEXT:
+{context}
+
+CLAUDE'S RESPONSE:
+{claude_response}
+
+USER'S REACTION:
+{message}
+
+Is there an insight emerging? Look for:
+1. Realization: User discovers something about their situation, patterns, or goals
+2. Analysis: Deep analytical work yielding conclusions
+3. Strategy: A strategic framework or approach crystallizing
+4. Personal: Insight about user's personality, preferences, or working style
+5. Synthesis: Connection between previously separate concepts
+
+If this is an insight, output JSON:
+{
+  "is_insight": true,
+  "insight": {
+    "category": "realization" | "analysis" | "strategy" | "personal" | "synthesis",
+    "summary": "...",  // 1-3 sentence summary
+    "detail": "...",   // Full insight content
+    "implications": "...",  // What this means for decisions/strategy
+    "trigger": "..."   // What prompted this insight
+  }
+}
+
+If not an insight:
+{
+  "is_insight": false
+}
+```
+
 ### 7. Skill File
 
 **File:** `skills/ccmemory/SKILL.md`
@@ -666,6 +728,100 @@ Use when asked "why is it this way?" to find the decision chain.
 3. When granting exceptions, note the justification and scope
 4. Periodically query for relevant precedent before proposing solutions
 ```
+
+## Context Management
+
+The plugin operates as an **executive consultant watching over the shoulder** — not passively waiting for explicit commands, but actively monitoring for important information.
+
+### Executive Oversight Protocol
+
+The `user_prompt.py` hook implements executive oversight — monitoring every user message and asking:
+
+> "Did the user just tell me something important about this project that I should remember next session?"
+
+**Detection priorities (in order):**
+1. **Corrections** (HIGHEST) — User fixing Claude's understanding
+2. **Decisions** — Architectural choices, strategy changes
+3. **Preferences** — "Always do X", "Never do Y"
+4. **How things work** — Explanations of systems, patterns
+5. **Why decisions were made** — Rationale, tradeoffs
+
+**Key insight**: The most valuable information is often shared casually during normal work, not in formal "please remember this" commands. The plugin must:
+
+1. **Monitor continuously** — Every user message is analyzed
+2. **Prioritize corrections** — When user says "that's wrong", this is the highest-value capture
+3. **Route appropriately** — Decisions go to Decision nodes, corrections to Correction nodes
+4. **Maintain accountability** — Ask: "Is the graph now more complete and accurate than before?"
+
+### Self-Check Protocol
+
+After every message exchange, Claude asks internally:
+- Did the user correct my understanding?
+- Did the user explain how something works?
+- Did the user make or confirm a decision?
+- Did the user express a preference or rule?
+
+If yes → record to graph immediately.
+
+### Session Continuity
+
+**Session Start:**
+- Query graph for recent decisions/corrections in this project
+- Surface unresolved items from previous session
+- Inject as context
+
+**Session End:**
+- Log full transcript to Session node
+- Extract and link any unrecorded decisions/corrections
+- Update session summary for next handoff
+
+### Working Memory
+
+The graph provides working memory through:
+- Recent Session node queries for immediate context
+- `status: 'developmental'` decisions as the active working set
+- `query_context` tool for explicit recall of relevant precedent
+
+Unlike file-based approaches, the graph enables:
+- Cross-project queries (same database, project-filtered)
+- Team visibility with user_id filtering
+- Full-text precedent search across all decisions
+- Temporal queries with first-class datetime properties
+
+### Self-Improvement Protocol
+
+The graph should teach itself to learn better over time:
+
+1. **Meta-detection** — When the user describes improvements to how they want context captured, record this as a meta-correction that updates detection behavior.
+
+2. **Proactive staleness checks** — Query for decisions/observations older than **project-configured** thresholds:
+   - Fast-moving projects: 30 days for tentative decisions
+   - Slower contexts (career, day job): 90-120 days
+   - Observations with revisit_triggers that may have fired
+   - Context that conflicts with recent corrections
+
+3. **Cross-reference coherence** — When recording a new node, check if related nodes need updates. A new decision may obsolete an old one; a correction may invalidate prior assumptions.
+
+4. **Archive, don't delete** — Nothing is truly deleted. Outdated context is marked `archived: true` with `archived_reason` and `archived_at`. This preserves history for pattern recognition.
+
+5. **Lossless compression** — When summarizing or compacting context, never sacrifice accuracy for brevity. If compression would lose detail, flag for human review rather than auto-compacting.
+
+### Revisit Trigger Monitoring
+
+Decisions with `revisit_trigger` fields are living decisions that should be proactively resurfaced:
+
+```cypher
+// Query for decisions needing review
+MATCH (d:Decision)
+WHERE d.revisit_trigger IS NOT NULL
+  AND d.decision_status = 'tentative'
+  AND d.last_reviewed < datetime() - duration('P30D')
+RETURN d
+ORDER BY d.timestamp DESC
+```
+
+At session start, surface pending revisit triggers:
+- "You have 2 tentative decisions that may need review based on their revisit triggers..."
 
 ### 8. Install Script
 

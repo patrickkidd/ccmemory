@@ -99,6 +99,25 @@ This is a **Claude Code plugin** that installs once and applies to any project. 
 - Import pipelines for various data sources
 - Agent skill instructions
 
+### Executive Oversight Model
+
+The plugin operates as an **executive consultant watching over the shoulder** — not passively waiting for explicit commands, but actively monitoring for important information.
+
+**Key insight**: The most valuable information is often shared casually during normal work, not in formal "please remember this" commands. The plugin must:
+
+1. **Monitor continuously** — Every user message is analyzed
+2. **Prioritize corrections** — When user says "that's wrong", this is the highest-value capture
+3. **Route appropriately** — Decisions go to Decision nodes, corrections to Correction nodes
+4. **Maintain accountability** — Ask: "Is the graph now more complete and accurate than before?"
+
+This differs from traditional RAG systems that only retrieve. The graph **actively grows** with every session. After each message exchange, Claude internally asks:
+- Did the user correct my understanding?
+- Did the user explain how something works?
+- Did the user make or confirm a decision?
+- Did the user express a preference or rule?
+
+If yes → record to graph immediately.
+
 **The project itself determines the domain.** Each Claude Code project has its own:
 
 - `CLAUDE.md` with domain-specific instructions
@@ -442,15 +461,31 @@ This transforms the system from **storage** to **research partner**:
 
 ## Data Model Extensions
 
-### Domain 1: Event Graph (from original plan, unchanged)
-
-The original EVENT_GRAPH_PLAN.md data model remains the core:
+### Domain 1: Event Graph (core)
 
 - **Sessions** — walks through the domain
-- **Decisions** — choices with options, rationale, revisit triggers
+- **Decisions** — choices with options, rationale, **revisit triggers**, and tentative vs committed status
 - **Corrections** — updated beliefs (highest value)
 - **Exceptions** — rules that don't apply
+- **Insights** — realizations, analyses, strategies, and personal patterns that emerge
 - **Touches** — information sources accessed (files, papers, data)
+
+**Decisions as Living Documents:**
+
+Decisions aren't just recorded — they have lifecycle:
+- `tentative` decisions are frameworks/defaults that may change
+- `committed` decisions are locked unless explicitly reopened
+- `revisit_trigger` specifies conditions that should prompt reconsideration
+- When triggers fire, proactively surface the decision for review
+
+**Insights as First-Class Citizens:**
+
+Insights capture the "aha moments" that emerge from analysis:
+- `realization` — user discovers something about their situation
+- `analysis` — deep analytical work yielding conclusions
+- `strategy` — strategic frameworks crystallizing
+- `personal` — patterns in personality, preferences, working style
+- `synthesis` — connections between previously separate concepts
 
 ### Domain 1: Observations and Relationships (new)
 
@@ -965,6 +1000,48 @@ Build:
 - [ ] Documentation
 
 **Deliverable**: Complete universal context graph
+
+---
+
+## Core Principles
+
+### Self-Improvement
+
+The graph should teach itself to learn better:
+
+1. **Always be learning** — Every conversation should deepen understanding. Capture new insights about the domain, decision patterns, and user preferences.
+
+2. **Always be optimizing** — Continuously improve the accuracy and organization of context. Restructure for clarity. Fix stale info immediately.
+
+3. **Meta-corrections** — When users describe how they want context captured differently, record this as a meta-correction that updates future detection behavior.
+
+### Living History
+
+Nothing is deleted — outdated context is archived for future reference and pattern recognition:
+
+1. **Archive, don't delete** — Mark outdated nodes as `archived: true` with reason and timestamp. History enables pattern recognition.
+
+2. **Proactive staleness checks** — Periodically query for context that may be stale. Staleness thresholds are **project-configurable**:
+   - Fast-moving projects (personal dev): 30 days for tentative decisions
+   - Slower-moving contexts (day job, career): 90-120 days
+   - Observations with revisit triggers that may have fired
+   - Context that conflicts with recent corrections
+
+3. **Cross-reference coherence** — When updating one node, check if related nodes need updates. A new decision may obsolete an old one.
+
+### Lossless Compression
+
+When summarizing or compacting context:
+- Never sacrifice accuracy for brevity
+- If compression would lose detail, flag for human review
+- Ask before deleting any detail the user provided
+
+### Interview Discipline
+
+Before making recommendations or decisions:
+- Always gather complete context first
+- Don't assume — ask if uncertain
+- Surface related context that may not have been mentioned
 
 ---
 
