@@ -186,8 +186,14 @@ See [doc/TELEMETRY.md](doc/TELEMETRY.md) for the full enterprise metrics framewo
 - `developmental` decisions: Only visible to creator
 - `curated` decisions: Visible to all team members (promoted via git hooks)
 
-See [doc/PROJECT_VISION.md](doc/PROJECT_VISION.md) for the full conceptual architecture.
-See [doc/IMPLEMENTATION_PLAN.md](doc/IMPLEMENTATION_PLAN.md) for build specifications.
+### Scope
+
+**Phase 1 (Current)**: Software development focus — decisions, corrections, and context for Claude Code sessions. This is the MVP that ships.
+
+**Future Phases**: The architecture generalizes to any domain requiring accumulated understanding: career consulting, medical research, relationship systems, strategic planning. See the Vision doc for the full picture.
+
+See [doc/PROJECT_VISION.md](doc/PROJECT_VISION.md) for the full conceptual architecture (multi-domain, active research, hypothesis generation).
+See [doc/IMPLEMENTATION_PLAN.md](doc/IMPLEMENTATION_PLAN.md) for Phase 1 build specifications.
 
 ---
 

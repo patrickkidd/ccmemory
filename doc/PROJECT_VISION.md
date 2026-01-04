@@ -652,7 +652,7 @@ This transforms the system from **storage** to **research partner**:
 ### Domain 1: Event Graph (core)
 
 - **Sessions** — walks through the domain
-- **Decisions** — choices with options, rationale, **revisit triggers**, and tentative vs committed status
+- **Decisions** — choices with options, rationale, **revisit triggers**, and developmental vs curated status
 - **Corrections** — updated beliefs (highest value)
 - **Exceptions** — rules that don't apply
 - **Insights** — realizations, analyses, strategies, and personal patterns that emerge
@@ -661,8 +661,8 @@ This transforms the system from **storage** to **research partner**:
 **Decisions as Living Documents:**
 
 Decisions aren't just recorded — they have lifecycle:
-- `tentative` decisions are frameworks/defaults that may change
-- `committed` decisions are locked unless explicitly reopened
+- `developmental` decisions are captured during work, not yet promoted
+- `curated` decisions are promoted to permanent record, team-visible
 - `revisit_trigger` specifies conditions that should prompt reconsideration
 - When triggers fire, proactively surface the decision for review
 
@@ -1210,7 +1210,7 @@ Nothing is deleted — outdated context is archived for future reference and pat
 1. **Archive, don't delete** — Mark outdated nodes as `archived: true` with reason and timestamp. History enables pattern recognition.
 
 2. **Proactive staleness checks** — Periodically query for context that may be stale. Staleness thresholds are **project-configurable**:
-   - Fast-moving projects (personal dev): 30 days for tentative decisions
+   - Fast-moving projects (personal dev): 30 days for developmental decisions
    - Slower-moving contexts (day job, career): 90-120 days
    - Observations with revisit triggers that may have fired
    - Context that conflicts with recent corrections

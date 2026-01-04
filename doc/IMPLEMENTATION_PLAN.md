@@ -6,7 +6,7 @@
 
 This document specifies exactly what needs to be built. It is written for a developer (human or AI) to execute without further architectural guidance.
 
-See [PROJECT_VISION.md](PROJECT_VISION.md) for conceptual architecture and [TELEMETRY.md](TELEMETRY.md) for the metrics framework.
+See [PROJECT_VISION.md](./PROJECT_VISION.md) for conceptual architecture and [TELEMETRY.md](./TELEMETRY.md) for the metrics framework.
 
 ---
 
@@ -142,24 +142,33 @@ Captures lived experience from Claude Code sessions. High confidence — you sai
 
 ### Domain 2: Markdown Tree + Graph Index (Reference Knowledge)
 
-Reference knowledge lives in a project-local markdown tree. Claude reads markdown natively; the graph indexes it for semantic retrieval.
+Reference knowledge lives in a **project-local** markdown tree at project root (not `~/.claude/`). Claude reads markdown natively; the graph indexes it for semantic retrieval.
 
-**Directory structure**:
+**Directory structure** (at project root):
 ```
-.claude/ccmemory/reference/
-├── concepts/
-│   ├── authentication/
-│   │   ├── jwt.md
-│   │   └── oauth.md
-│   └── retry-patterns.md
-├── frameworks/
-│   └── bowen-theory.md
-├── cached/
-│   ├── web/
-│   │   └── foundation-capital-context-graphs.md
-│   └── pdf/
-│       └── sleep-research-2024.md
-└── index.md
+<project>/
+├── .ccmemory/
+│   └── reference/
+│       ├── concepts/
+│       │   ├── authentication/
+│       │   │   ├── jwt.md
+│       │   │   └── oauth.md
+│       │   └── retry-patterns.md
+│       ├── frameworks/
+│       │   └── bowen-theory.md
+│       └── cached/
+│           ├── web/
+│           │   └── foundation-capital-context-graphs.md
+│           └── pdf/
+│               └── sleep-research-2024.md
+├── decisions/              # Optional: exported decision log
+├── insights/               # Optional: exported insights
+└── ...
+```
+
+**Note**: `.ccmemory/` is gitignored by default. Add to `.gitignore`:
+```
+.ccmemory/
 ```
 
 **Why markdown**:
@@ -436,6 +445,9 @@ dependencies = [
     "flask",
     "click",
     "weasyprint",
+    "httpx",
+    "beautifulsoup4",
+    "pymupdf",
 ]
 
 [project.scripts]
@@ -777,12 +789,12 @@ class GraphClient:
             return results
 
     def query_stale_decisions(self, project: str, days: int = 30):
-        """Find tentative decisions that may need review."""
+        """Find developmental decisions that may need review or promotion."""
         with self.driver.session() as session:
             result = session.run(
                 """
                 MATCH (d:Decision {project: $project})
-                WHERE d.decision_status = 'tentative'
+                WHERE d.status = 'developmental'
                   AND d.timestamp < datetime() - duration({days: $days})
                 RETURN d
                 ORDER BY d.timestamp DESC
@@ -870,8 +882,13 @@ class GraphClient:
     # === Telemetry ===
 
     def record_telemetry(self, event_type: str, project: str, data: dict):
-        """Record a telemetry event."""
+        """Record a telemetry event.
+
+        Data is stored as a JSON string for flexibility, but common fields
+        are extracted as top-level properties for queryability.
+        """
         import uuid
+        import json
         with self.driver.session() as session:
             session.run(
                 """
@@ -881,12 +898,17 @@ class GraphClient:
                     project: $project,
                     user_id: $user_id,
                     timestamp: datetime(),
-                    data: $data
+                    data_json: $data_json,
+                    count: $count,
+                    duration_ms: $duration_ms
                 })
                 """,
                 id=f"telem-{uuid.uuid4().hex[:12]}",
                 event_type=event_type, project=project,
-                user_id=self.user_id, data=str(data)
+                user_id=self.user_id,
+                data_json=json.dumps(data),
+                count=data.get("count"),
+                duration_ms=data.get("duration_ms")
             )
 
     # === Metrics ===
@@ -894,13 +916,19 @@ class GraphClient:
     def calculate_coefficient(self, project: str) -> float:
         """Calculate cognitive coefficient from observable metrics.
 
-        Formula: 1.0 + (curated_decisions * 0.02) + (decision_reuse_rate * 1.0)
+        Formula: 1.0 + (curated_decisions * 0.02) + (correction_rate_improvement * 0.5)
+                     + (decision_reuse_rate * 1.0)
         Capped at 4.0. This is a leading indicator that improves as the graph grows.
+
+        correction_rate_improvement: Inverse of re-explanation rate (lower = better).
+        We use 1 - reexplanation_rate, capped at 0-1.
         """
         curated = self._count_nodes("Decision", project, status="curated")
         reuse_rate = self.calculate_decision_reuse_rate(project)
+        reexplanation = self.calculate_reexplanation_rate(project)
+        correction_improvement = max(0.0, min(1.0, 1.0 - reexplanation))
 
-        coefficient = 1.0 + (curated * 0.02) + (reuse_rate * 1.0)
+        coefficient = 1.0 + (curated * 0.02) + (correction_improvement * 0.5) + (reuse_rate * 1.0)
         return min(4.0, coefficient)
 
     def calculate_reexplanation_rate(self, project: str) -> float:
@@ -1305,6 +1333,13 @@ async def detect_reference(user_message: str) -> Optional[Detection]:
 
 Claude Code provides session_id, transcript_path, cwd, and hook_event_name automatically to all hooks via stdin JSON.
 
+**Hook selection rationale:**
+- `SessionStart`: Inject relevant context at conversation start
+- `Stop`: Fires when Claude finishes responding — analyze complete exchange for decisions/corrections
+- `SessionEnd`: Finalize session, store transcript
+
+Note: `PostToolUse` only fires after tool calls, missing user corrections that don't trigger tools. `Stop` captures every response cycle.
+
 ```json
 {
   "hooks": {
@@ -1319,9 +1354,8 @@ Claude Code provides session_id, transcript_path, cwd, and hook_event_name autom
         ]
       }
     ],
-    "PostToolUse": [
+    "Stop": [
       {
-        "matcher": "*",
         "hooks": [
           {
             "type": "command",
@@ -1395,14 +1429,18 @@ def main():
     # Query failed approaches
     failed = client.query_failed_approaches(project, limit=5)
 
-    # Build context injection
+    # Build context injection as plain text
+    # SessionStart hooks inject stdout directly into Claude's context with exit 0
     context_parts = []
+
+    context_parts.append(f"# Context Graph: {project}")
+    context_parts.append(f"Session: {session_id[:12]}...")
+    context_parts.append("")
 
     if recent:
         context_parts.append("## Recent Context")
         for item in recent[:10]:
             node = item.get('n', {})
-            rel = item.get('rel_type', '')
             if 'description' in node:
                 context_parts.append(f"- Decision: {node['description'][:100]}")
             elif 'wrong_belief' in node:
@@ -1411,26 +1449,22 @@ def main():
                 context_parts.append(f"- Insight: {node['summary'][:100]}")
 
     if stale:
-        context_parts.append("\n## Decisions Needing Review")
+        context_parts.append("")
+        context_parts.append("## Decisions Needing Review")
         for d in stale[:3]:
-            context_parts.append(f"- {d.get('description', '')[:80]} (tentative, may need revisit)")
+            context_parts.append(f"- {d.get('description', '')[:80]} (developmental, may need revisit)")
 
     if failed:
-        context_parts.append("\n## Failed Approaches (Don't Repeat)")
+        context_parts.append("")
+        context_parts.append("## Failed Approaches (Don't Repeat)")
         for f in failed[:3]:
             context_parts.append(f"- {f.get('approach', '')[:60]}: {f.get('lesson', '')[:60]}")
 
-    # Output context
-    output = {
-        "session_id": session_id,
-        "project": project,
-        "context_graph_active": True,
-    }
+    if not recent and not stale and not failed:
+        context_parts.append("No prior context. Decisions, corrections, and insights will be captured.")
 
-    if context_parts:
-        output["injected_context"] = "\n".join(context_parts)
-
-    print(json.dumps(output))
+    # Output plain text for context injection (exit 0 = inject stdout)
+    print("\n".join(context_parts))
 
 if __name__ == "__main__":
     main()
@@ -1440,18 +1474,17 @@ if __name__ == "__main__":
 
 ```python
 #!/usr/bin/env python3
-"""Post-tool-use hook - detect and capture context from tool responses.
+"""Stop hook - detect and capture context after Claude finishes responding.
 
-Claude Code provides via stdin for PostToolUse:
+The Stop hook fires after every Claude response (not just tool calls), making it
+ideal for detecting decisions, corrections, and insights from user messages.
+
+Claude Code provides via stdin for Stop:
 {
   "session_id": "abc123",
   "transcript_path": "/path/to/transcript.jsonl",
   "cwd": "/current/working/dir",
-  "hook_event_name": "PostToolUse",
-  "tool_name": "Edit",
-  "tool_input": {...},
-  "tool_response": "...",
-  "tool_use_id": "toolu_..."
+  "hook_event_name": "Stop"
 }
 
 We read the transcript file to get the full conversation context for detection.
@@ -1702,8 +1735,8 @@ def get_embedding(text: str) -> list:
     if not text:
         return [0.0] * EMBEDDING_DIMS
 
-    # Check cache
-    cache_key = hash(text[:500])
+    # Check cache - use full text hash to avoid collisions
+    cache_key = hash(text)
     if cache_key in _embedding_cache:
         return _embedding_cache[cache_key]
 
@@ -1721,7 +1754,217 @@ def get_embedding(text: str) -> list:
         raise RuntimeError(f"Voyage AI embedding failed: {e}")
 ```
 
-### 8. Dashboard
+### 8. Reference Tools
+
+**File:** `mcp-server/src/ccmemory/tools/reference.py`
+
+```python
+"""Reference knowledge tools: cache URLs/PDFs, index for retrieval."""
+import os
+import re
+import hashlib
+from pathlib import Path
+from typing import Optional
+import httpx
+from bs4 import BeautifulSoup
+
+from ..graph import get_client
+from ..embeddings import get_embedding
+
+REFERENCE_DIR = ".ccmemory/reference"
+
+def get_reference_path(project_root: str) -> Path:
+    """Get the reference directory for a project."""
+    return Path(project_root) / REFERENCE_DIR
+
+def cache_url_impl(url: str, project_root: str) -> dict:
+    """Fetch URL and save as markdown."""
+    ref_path = get_reference_path(project_root) / "cached" / "web"
+    ref_path.mkdir(parents=True, exist_ok=True)
+
+    # Fetch content
+    response = httpx.get(url, follow_redirects=True, timeout=30)
+    response.raise_for_status()
+
+    # Extract text from HTML
+    soup = BeautifulSoup(response.text, "html.parser")
+
+    # Remove script and style elements
+    for script in soup(["script", "style", "nav", "footer"]):
+        script.decompose()
+
+    # Get title
+    title = soup.title.string if soup.title else url
+
+    # Get main content
+    main = soup.find("main") or soup.find("article") or soup.body
+    text = main.get_text(separator="\n", strip=True) if main else ""
+
+    # Clean up whitespace
+    text = re.sub(r'\n{3,}', '\n\n', text)
+
+    # Generate filename from URL
+    url_hash = hashlib.md5(url.encode()).hexdigest()[:8]
+    safe_name = re.sub(r'[^\w\-]', '-', title[:50]).strip('-')
+    filename = f"{safe_name}-{url_hash}.md"
+    filepath = ref_path / filename
+
+    # Write markdown
+    content = f"""# {title}
+
+Source: {url}
+Cached: {os.popen('date -Iseconds').read().strip()}
+
+---
+
+{text}
+"""
+    filepath.write_text(content)
+
+    return {"file": str(filepath), "title": title, "chars": len(text)}
+
+
+def cache_pdf_impl(pdf_path: str, project_root: str) -> dict:
+    """Extract PDF content to markdown."""
+    import fitz  # PyMuPDF
+
+    ref_path = get_reference_path(project_root) / "cached" / "pdf"
+    ref_path.mkdir(parents=True, exist_ok=True)
+
+    pdf = fitz.open(pdf_path)
+    text_parts = []
+
+    for page_num, page in enumerate(pdf):
+        text = page.get_text()
+        if text.strip():
+            text_parts.append(f"## Page {page_num + 1}\n\n{text}")
+
+    pdf.close()
+
+    # Generate filename
+    source_name = Path(pdf_path).stem
+    filename = f"{source_name}.md"
+    filepath = ref_path / filename
+
+    content = f"""# {source_name}
+
+Source: {pdf_path}
+Cached: {os.popen('date -Iseconds').read().strip()}
+
+---
+
+{"".join(text_parts)}
+"""
+    filepath.write_text(content)
+
+    return {"file": str(filepath), "pages": len(text_parts)}
+
+
+def index_all(project_root: str) -> int:
+    """Index all markdown files in reference tree."""
+    ref_path = get_reference_path(project_root)
+    if not ref_path.exists():
+        return 0
+
+    client = get_client()
+    project = os.path.basename(project_root)
+
+    # Clear existing chunks for this project
+    client.clear_chunks(project)
+
+    count = 0
+    for md_file in ref_path.rglob("*.md"):
+        count += index_file(md_file, project_root, client)
+
+    return count
+
+
+def index_file(filepath: Path, project_root: str, client=None) -> int:
+    """Index a single markdown file into chunks."""
+    if client is None:
+        client = get_client()
+
+    project = os.path.basename(project_root)
+    relative_path = str(filepath.relative_to(project_root))
+
+    content = filepath.read_text()
+
+    # Split into sections by headers
+    sections = re.split(r'^(#{1,3}\s+.+)$', content, flags=re.MULTILINE)
+
+    chunks = []
+    current_section = "Overview"
+
+    for i, part in enumerate(sections):
+        if re.match(r'^#{1,3}\s+', part):
+            current_section = part.strip('#').strip()
+        elif part.strip():
+            chunks.append({
+                "section": current_section,
+                "content": part.strip()[:2000]  # Cap chunk size
+            })
+
+    # Index each chunk
+    for i, chunk in enumerate(chunks):
+        chunk_id = f"{relative_path}#{i}"
+        text_for_embedding = f"{chunk['section']}: {chunk['content'][:500]}"
+        embedding = get_embedding(text_for_embedding)
+
+        client.index_chunk(
+            chunk_id=chunk_id,
+            project=project,
+            source_file=relative_path,
+            section=chunk["section"],
+            content=chunk["content"],
+            embedding=embedding
+        )
+
+    return len(chunks)
+
+
+# MCP Tool wrappers
+async def cache_url(url: str) -> dict:
+    """Cache a URL to the reference knowledge tree."""
+    project_root = os.getcwd()
+    return cache_url_impl(url, project_root)
+
+
+async def cache_pdf(path: str) -> dict:
+    """Cache a PDF to the reference knowledge tree."""
+    project_root = os.getcwd()
+    return cache_pdf_impl(path, project_root)
+
+
+async def index_reference() -> dict:
+    """Rebuild the reference knowledge index."""
+    project_root = os.getcwd()
+    count = index_all(project_root)
+    return {"indexed_chunks": count}
+
+
+async def query_reference(query: str, limit: int = 5) -> dict:
+    """Search the reference knowledge tree."""
+    project_root = os.getcwd()
+    project = os.path.basename(project_root)
+
+    embedding = get_embedding(query)
+    client = get_client()
+    results = client.search_reference(embedding, project, limit=limit)
+
+    return {
+        "results": [
+            {
+                "file": r[0].get("source_file"),
+                "section": r[0].get("section"),
+                "content": r[0].get("content", "")[:300],
+                "score": r[1]
+            }
+            for r in results
+        ]
+    }
+```
+
+### 9. Dashboard
 
 **File:** `dashboard/app.py`
 
@@ -2006,7 +2249,7 @@ if __name__ == "__main__":
             container.innerHTML = data.map(d =>
                 `<div class="context-item needs-review">
                     <strong>${d.description?.substring(0, 60)}...</strong>
-                    <br><small>Tentative decision, may need revisit</small>
+                    <br><small>Developmental — review or promote</small>
                     <button class="button is-small is-light" onclick="dismissStale('${d.id}')">Dismiss</button>
                 </div>`
             ).join('');
@@ -2406,3 +2649,71 @@ ccmemory dashboard
 # Check metrics
 ccmemory stats
 ```
+
+---
+
+## Roadmap: Post-MVP Enhancements
+
+Items deferred from MVP to keep initial scope focused. Address after core functionality validated.
+
+### Loop Efficiency Metric
+
+**Problem**: LE = (AI actions) / (human interventions) requires tracking granular interaction patterns.
+
+**Solution path**:
+1. Add `interaction_type` to telemetry events: `goal_setting`, `course_correction`, `validation`, `continuation`
+2. Parse transcripts to classify user messages (LLM-based classification in Stop hook)
+3. Calculate LE per session: (total Claude responses) / (course corrections + goal changes)
+4. Add to dashboard as "autonomy score"
+
+**Implementation**: ~1 week after MVP validation
+
+### Detection Threshold Tuning
+
+**Problem**: Fixed 0.7 confidence threshold may miss valuable corrections or generate noise.
+
+**Solution path**:
+1. Add per-node-type thresholds in config (corrections deserve lower threshold)
+2. Track false positive rate via user dismissals in dashboard
+3. A/B test threshold adjustments
+4. Consider user-adjustable sensitivity
+
+**Implementation**: Iterate based on real usage data
+
+### Team Mode Security
+
+**Problem**: Team mode relies on application-layer user_id filters; no database-level isolation.
+
+**Solution path**:
+1. **Short term**: Document that Neo4j access should be restricted to ccmemory processes only
+2. **Medium term**: Add Neo4j roles/users with row-level security using RBAC
+3. **Long term**: Consider separate databases per team or encryption at rest
+
+**Implementation**: Security hardening phase after adoption validated
+
+### Transcript Storage Optimization
+
+**Problem**: 100KB/session × many sessions = storage bloat
+
+**Contingency (near term)**:
+- Cap transcript storage at 50KB (still captures most sessions)
+- Add `transcript_truncated` flag when exceeded
+- Store full transcripts only for sessions with high detection count
+
+**Long term**:
+- Archive transcripts to object storage (S3) after 30 days
+- Keep only summaries in Neo4j
+- Add `ccmemory archive` command for manual cleanup
+
+### AI Suggestions & Pattern Detection
+
+**Problem**: README promises AI suggestions; MVP doesn't include them.
+
+**Solution path (Phase 2)**:
+1. Add `query_patterns` tool that analyzes decision clusters
+2. Run periodic pattern detection job (daily)
+3. Store Pattern nodes with evidence links
+4. Surface in dashboard "AI Suggestions" panel
+5. Add hypothesis generation based on correction patterns
+
+See PROJECT_VISION.md "The Co-Thinker Model" for full specification.
