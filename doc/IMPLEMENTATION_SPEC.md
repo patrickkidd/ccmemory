@@ -1,10 +1,10 @@
-# ccmemory-graph: Persistent Memory for Claude Code
+# ccmemory: Persistent Memory for Claude Code
 
 **A plugin that gives Claude Code institutional memory across any domain.**
 
 ## What It Does
 
-ccmemory-graph captures how understanding evolves — decisions made, corrections received, exceptions granted, patterns discovered. This context persists across sessions, making each conversation build on the last.
+ccmemory captures how understanding evolves — decisions made, corrections received, exceptions granted, patterns discovered. This context persists across sessions, making each conversation build on the last.
 
 **The problem**: Every Claude Code session generates valuable context that's lost when the session ends. You re-explain constraints. You re-discover patterns. Accumulated understanding never compounds.
 
@@ -80,7 +80,7 @@ export CCMEMORY_NEO4J_PASSWORD="team-password"
 Create this exact structure:
 
 ```
-ccmemory-graph/
+ccmemory/
 ├── .claude-plugin/
 │   └── plugin.json              # Plugin manifest
 ├── docker/
@@ -89,7 +89,7 @@ ccmemory-graph/
 ├── mcp-server/
 │   ├── pyproject.toml           # Python package config
 │   └── src/
-│       └── ccmemory_graph/
+│       └── ccmemory/
 │           ├── __init__.py
 │           ├── server.py        # MCP server entry point
 │           ├── graph.py         # Neo4j client
@@ -114,10 +114,10 @@ ccmemory-graph/
 │   ├── detect_correction.md
 │   └── detect_exception.md
 ├── skills/
-│   └── context-graph/
+│   └── ccmemory/
 │       └── SKILL.md
 ├── cli/
-│   └── ccmemory_graph_cli.py
+│   └── ccmemory_cli.py
 ├── scripts/
 │   ├── install.sh
 │   ├── start.sh
@@ -137,17 +137,17 @@ ccmemory-graph/
 
 ```json
 {
-  "name": "ccmemory-graph",
+  "name": "ccmemory",
   "version": "0.1.0",
   "description": "Universal context graph for decision traces and pattern detection",
-  "author": "Patrick Kidd",
+  "author": "Patrick Stinson",
   "homepage": "https://github.com/patrickkidd/ccmemory",
   "hooks": "./hooks/hooks.json",
-  "skills": ["./skills/context-graph"],
+  "skills": ["./skills/ccmemory"],
   "mcp_servers": {
-    "ccmemory-graph": {
+    "ccmemory": {
       "command": "python",
-      "args": ["-m", "ccmemory_graph.server"],
+      "args": ["-m", "ccmemory.server"],
       "cwd": "./mcp-server/src"
     }
   },
@@ -165,7 +165,7 @@ version: '3.8'
 services:
   neo4j:
     image: neo4j:5-community
-    container_name: ccmemory-graph-neo4j
+    container_name: ccmemory-neo4j
     ports:
       - "7474:7474"
       - "7687:7687"
@@ -186,9 +186,9 @@ services:
 
 volumes:
   ccmemory_data:
-    name: ccmemory_graph_data
+    name: ccmemory_data
   ccmemory_logs:
-    name: ccmemory_graph_logs
+    name: ccmemory_logs
 ```
 
 ### 3. Schema Initialization
@@ -226,7 +226,7 @@ CREATE FULLTEXT INDEX correction_search IF NOT EXISTS
 
 ```toml
 [project]
-name = "ccmemory-graph"
+name = "ccmemory"
 version = "0.1.0"
 dependencies = [
     "mcp",
@@ -235,19 +235,19 @@ dependencies = [
 ]
 
 [project.scripts]
-ccmemory-graph = "ccmemory_graph.cli:main"
+ccmemory = "ccmemory.cli:main"
 ```
 
-**File:** `mcp-server/src/ccmemory_graph/server.py`
+**File:** `mcp-server/src/ccmemory/server.py`
 
 ```python
-"""MCP server for ccmemory-graph."""
+"""MCP server for ccmemory."""
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
 
 from .tools import record, query, precedent, trace
 
-app = Server("ccmemory-graph")
+app = Server("ccmemory")
 
 # Register tools
 app.add_tool(record.record_trajectory)
@@ -264,10 +264,10 @@ if __name__ == "__main__":
     asyncio.run(main())
 ```
 
-**File:** `mcp-server/src/ccmemory_graph/graph.py`
+**File:** `mcp-server/src/ccmemory/graph.py`
 
 ```python
-"""Neo4j client for ccmemory-graph."""
+"""Neo4j client for ccmemory."""
 import os
 from neo4j import GraphDatabase
 
@@ -634,7 +634,7 @@ If not an exception:
 
 ### 7. Skill File
 
-**File:** `skills/context-graph/SKILL.md`
+**File:** `skills/ccmemory/SKILL.md`
 
 ```markdown
 # Context Graph Skill
@@ -675,7 +675,7 @@ Use when asked "why is it this way?" to find the decision chain.
 #!/bin/bash
 set -e
 
-echo "Installing ccmemory-graph..."
+echo "Installing ccmemory..."
 
 # Check for Docker
 if ! command -v docker &> /dev/null; then
@@ -693,7 +693,7 @@ fi
 cd "$(dirname "$0")/../mcp-server"
 pip install -e .
 
-echo "ccmemory-graph installed. Run 'ccmemory-graph start' to begin."
+echo "ccmemory installed. Run 'ccmemory start' to begin."
 ```
 
 ### 9. Start/Stop Scripts
@@ -708,14 +708,14 @@ cd "$(dirname "$0")/../docker"
 docker-compose up -d
 
 echo "Waiting for Neo4j to be ready..."
-until docker exec ccmemory-graph-neo4j curl -s http://localhost:7474 > /dev/null 2>&1; do
+until docker exec ccmemory-neo4j curl -s http://localhost:7474 > /dev/null 2>&1; do
     sleep 2
 done
 
 echo "Initializing schema..."
-docker exec ccmemory-graph-neo4j cypher-shell -u neo4j -p "${CCMEMORY_NEO4J_PASSWORD:-ccmemory}" < init.cypher
+docker exec ccmemory-neo4j cypher-shell -u neo4j -p "${CCMEMORY_NEO4J_PASSWORD:-ccmemory}" < init.cypher
 
-echo "ccmemory-graph is running."
+echo "ccmemory is running."
 ```
 
 **File:** `scripts/stop.sh`
@@ -724,7 +724,7 @@ echo "ccmemory-graph is running."
 #!/bin/bash
 cd "$(dirname "$0")/../docker"
 docker-compose down
-echo "ccmemory-graph stopped."
+echo "ccmemory stopped."
 ```
 
 ## Implementation Order
@@ -830,14 +830,14 @@ markers = [
 pytest tests/unit -v              # Fast, no deps
 pytest tests/integration -v       # Requires Neo4j
 pytest tests/e2e -v               # Full workflows
-pytest --cov=ccmemory_graph       # With coverage
+pytest --cov=ccmemory             # With coverage
 ```
 
 ## Testing Checklist
 
 - [ ] `docker-compose up` starts Neo4j
 - [ ] Schema initializes without errors
-- [ ] Plugin installs via `claude plugin install ./ccmemory-graph`
+- [ ] Plugin installs via `claude plugin install ./ccmemory`
 - [ ] Session start hook fires and outputs message
 - [ ] User prompt hook detects simple decision patterns
 - [ ] Session end hook fires
@@ -851,7 +851,7 @@ After installation:
 
 ```bash
 # Start the graph
-ccmemory-graph start
+ccmemory start
 
 # Open a Claude Code project
 cd my-project

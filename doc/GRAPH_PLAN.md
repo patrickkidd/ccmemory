@@ -1,4 +1,4 @@
-# ccmemory-graph: Automatic Knowledge Graph Memory for Claude Code
+# ccmemory: Automatic Knowledge Graph Memory for Claude Code
 
 ## Executive Summary
 
@@ -528,8 +528,8 @@ CREATE FULLTEXT INDEX decision_search IF NOT EXISTS FOR (d:Decision) ON EACH [d.
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/patrickkidd/ccmemory-graph.git
-cd ccmemory-graph
+git clone git@github.com:patrickkidd/ccmemory.git
+cd ccmemory
 
 # 2. Start Neo4j
 docker-compose up -d
@@ -541,15 +541,15 @@ docker-compose up -d
 ./scripts/init-db.sh
 
 # 5. Install the Claude Code plugin
-claude plugin marketplace add patrickkidd/ccmemory-graph
-claude plugin install ccmemory-graph
+claude plugin marketplace add patrickkidd/ccmemory
+claude plugin install ccmemory
 
 # 6. Restart Claude Code
 ```
 
 ### Configuration
 
-Create `~/.ccmemory-graph/config.yaml`:
+Create `~/.ccmemory/config.yaml`:
 
 ```yaml
 neo4j:
@@ -584,7 +584,7 @@ context:
 ## Repository Structure
 
 ```
-ccmemory-graph/
+ccmemory/
 ├── .claude-plugin/
 │   └── manifest.json
 ├── docker/
@@ -597,7 +597,7 @@ ccmemory-graph/
 ├── mcp-server/
 │   ├── pyproject.toml
 │   ├── src/
-│   │   └── ccmemory_graph/
+│   │   └── ccmemory/
 │   │       ├── __init__.py
 │   │       ├── server.py          # MCP server implementation
 │   │       ├── tools/
@@ -638,7 +638,7 @@ ccmemory-graph/
 ├── CLAUDE.md
 ├── README.md
 ├── LICENSE
-└── ccmemory-graph.code-workspace
+└── ccmemory.code-workspace
 ```
 
 ---
@@ -746,7 +746,7 @@ This will:
 
 ### Coexistence
 
-ccmemory-graph can run alongside ccmemory:
+The graph can run alongside flat markdown files:
 - Graph is the primary source of truth
 - Markdown files remain as human-readable backup
 - Hooks call both systems during transition

@@ -112,7 +112,7 @@ This is a **Claude Code plugin** that installs once and applies to any project. 
 my-app/
 ├── CLAUDE.md           # Software dev instructions, coding standards
 ├── .claude/
-│   └── context-graph/
+│   └── ccmemory/
 │       └── config.yaml # Git import, no external data sources
 └── src/
 ```
@@ -123,7 +123,7 @@ my-app/
 insomnia-research/
 ├── CLAUDE.md           # Instructions for symptom tracking, hypothesis testing
 ├── .claude/
-│   └── context-graph/
+│   └── ccmemory/
 │       ├── config.yaml
 │       │   imports:
 │       │     - type: app

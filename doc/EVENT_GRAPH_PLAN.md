@@ -1,4 +1,4 @@
-# ccmemory-graph: Context Graph for Claude Code
+# ccmemory: Context Graph for Claude Code
 
 ## Executive Summary
 
@@ -662,11 +662,11 @@ Output JSON:
 
 ```bash
 # 1. Install the plugin
-claude plugin marketplace add patrickkidd/ccmemory-graph
-claude plugin install ccmemory-graph
+claude plugin marketplace add patrickkidd/ccmemory
+claude plugin install ccmemory
 
 # 2. Start the context graph (auto-starts Neo4j in Docker)
-ccmemory-graph start
+ccmemory start
 
 # 3. That's it. Start using Claude Code normally.
 ```
@@ -683,7 +683,7 @@ The plugin auto-detects your project and begins capturing trajectories immediate
 
 ### Configuration (Optional)
 
-Create `~/.ccmemory-graph/config.yaml` for custom settings:
+Create `~/.ccmemory/config.yaml` for custom settings:
 
 ```yaml
 # Neo4j connection (defaults work for local Docker)
@@ -732,23 +732,23 @@ context:
 
 ```bash
 # Start/stop the context graph
-ccmemory-graph start
-ccmemory-graph stop
-ccmemory-graph status
+ccmemory start
+ccmemory stop
+ccmemory status
 
 # Explore your graph
-ccmemory-graph query "why is timeout set to 30s"
-ccmemory-graph trace src/api/auth.py
-ccmemory-graph precedent "error handling approach"
+ccmemory query "why is timeout set to 30s"
+ccmemory trace src/api/auth.py
+ccmemory precedent "error handling approach"
 
 # Maintenance
-ccmemory-graph backup ~/backups/
-ccmemory-graph restore ~/backups/ccmemory-2024-01-15.dump
-ccmemory-graph stats
+ccmemory backup ~/backups/
+ccmemory restore ~/backups/ccmemory-2024-01-15.dump
+ccmemory stats
 
 # Debug
-ccmemory-graph logs
-ccmemory-graph inspect session-123
+ccmemory logs
+ccmemory inspect session-123
 ```
 
 ---
@@ -763,7 +763,7 @@ version: '3.8'
 services:
   neo4j:
     image: neo4j:5-community
-    container_name: ccmemory-graph-neo4j
+    container_name: ccmemory-neo4j
     ports:
       - "7474:7474"   # Browser (optional, for debugging)
       - "7687:7687"   # Bolt protocol
@@ -783,13 +783,13 @@ services:
       retries: 5
     restart: unless-stopped
     labels:
-      - "ccmemory-graph=true"
+      - "ccmemory=true"
 
 volumes:
   ccmemory_data:
-    name: ccmemory_graph_data
+    name: ccmemory_data
   ccmemory_logs:
-    name: ccmemory_graph_logs
+    name: ccmemory_logs
 ```
 
 ### Initialization (Minimal Schema)
@@ -822,7 +822,7 @@ CREATE FULLTEXT INDEX correction_search IF NOT EXISTS
 ## Repository Structure
 
 ```
-ccmemory-graph/
+ccmemory/
 ├── .claude-plugin/
 │   └── manifest.json
 ├── docker/
@@ -831,7 +831,7 @@ ccmemory-graph/
 ├── mcp-server/
 │   ├── pyproject.toml
 │   └── src/
-│       └── ccmemory_graph/
+│       └── ccmemory/
 │           ├── __init__.py
 │           ├── server.py           # MCP server
 │           ├── tools/
@@ -861,10 +861,10 @@ ccmemory-graph/
 │   ├── detect_correction.md
 │   └── detect_exception.md
 ├── skills/
-│   └── context-graph/
+│   └── ccmemory/
 │       └── SKILL.md
 ├── cli/
-│   └── ccmemory_graph_cli.py
+│   └── ccmemory_cli.py
 ├── scripts/
 │   ├── install.sh
 │   ├── start.sh
@@ -1230,22 +1230,22 @@ ORDER BY d.confidence ASC
 
 ```bash
 # Import decision logs
-ccmemory-graph backfill decisions ./decisions/*.md --project btcopilot
+ccmemory backfill decisions ./decisions/*.md --project btcopilot
 
 # Import from git history
-ccmemory-graph backfill git ~/projects/btcopilot --since 2024-01-01
+ccmemory backfill git ~/projects/btcopilot --since 2024-01-01
 
 # Import conversation logs
-ccmemory-graph backfill conversations ~/.claude/logs/ --project btcopilot
+ccmemory backfill conversations ~/.claude/logs/ --project btcopilot
 
 # Import existing CLAUDE.md and docs
-ccmemory-graph backfill docs ~/projects/btcopilot --include "CLAUDE.md,docs/*.md"
+ccmemory backfill docs ~/projects/btcopilot --include "CLAUDE.md,docs/*.md"
 
 # See backfill status and quality
-ccmemory-graph backfill status
+ccmemory backfill status
 
 # Review low-confidence imports
-ccmemory-graph backfill review --confidence-below 0.7
+ccmemory backfill review --confidence-below 0.7
 ```
 
 #### Bootstrapping Sequence
@@ -1262,10 +1262,10 @@ After backfill, run pattern analysis:
 
 ```bash
 # Analyze patterns in backfilled data
-ccmemory-graph analyze --rebuild-cooccurrence --link-precedents
+ccmemory analyze --rebuild-cooccurrence --link-precedents
 
 # Generate backfill quality report
-ccmemory-graph backfill report > backfill-quality.md
+ccmemory backfill report > backfill-quality.md
 ```
 
 ---
@@ -1399,7 +1399,7 @@ See Exception #12 for original justification.
 ### Automatic Import
 
 ```bash
-ccmemory-graph migrate --from ~/.ccmemory/
+ccmemory migrate --from ~/.ccmemory/
 ```
 
 This will:
@@ -1410,7 +1410,7 @@ This will:
 
 ### Coexistence
 
-ccmemory-graph can run alongside ccmemory during transition:
+The graph can run alongside flat markdown files during transition:
 - Both capture data
 - Graph is primary source of truth
 - Markdown files remain as human-readable backup
