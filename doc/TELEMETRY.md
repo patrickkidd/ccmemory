@@ -9,10 +9,24 @@
 Traditional AI metrics count outputs (lines of code, suggestions accepted). ccmemory measures something more fundamental: **how much more effective is the AI with accumulated memory?**
 
 ```
-Cognitive Coefficient = (AI effectiveness with memory) / (AI effectiveness without memory)
+Cognitive Coefficient = f(context reuse, correction velocity, decision density)
 ```
 
-A coefficient of 1.0 means memory adds no value (every session starts cold). A coefficient of 3.0 means the AI is 3x more effective due to accumulated context.
+The coefficient is computed from observable proxy metrics:
+- **Context reuse rate**: How often is past context injected and used?
+- **Correction velocity**: How quickly are mistakes caught and learned?
+- **Decision density**: How many decisions per session link to precedent?
+
+A coefficient of 1.0 means memory adds minimal value. A coefficient of 3.0 means strong context compounding.
+
+**Current formula** (will evolve with real data):
+```
+coefficient = 1.0 + (curated_decisions * 0.02) + (correction_rate_improvement * 0.5)
+              + (decision_reuse_rate * 1.0)
+              capped at 4.0
+```
+
+This is a leading indicator, not a precise measurement. The value is directional: is the coefficient improving over time?
 
 ### Coefficient → Business KPIs
 
@@ -107,7 +121,7 @@ DRR = (decisions with precedent links) / (total new decisions) × 100
 - Pattern emergence (similar decisions cluster)
 - Anti-pattern avoidance (decisions that contradict prior failures)
 
-**Target**: DRR > 40% after 6 months indicates healthy knowledge graph.
+**Target**: DRR > 40% after 6 months indicates healthy context graph.
 
 **Business Translation**:
 - Without memory, each team reinvents decisions in isolation
@@ -162,9 +176,9 @@ CIR = (sessions with context injection used) / (total sessions) × 100
 
 ---
 
-### 5. Knowledge Graph Density (KGD)
+### 5. Context Graph Density (CGD)
 
-**Definition**: Richness of connections in the knowledge graph over time.
+**Definition**: Richness of connections in the context graph over time.
 
 **Measurement**:
 ```
@@ -332,7 +346,7 @@ Generates PDF with:
 3. **Trend Analysis**
    - Month-over-month metric improvements
    - Adoption curve
-   - Knowledge graph growth
+   - Context graph growth
 
 4. **Recommendations**
    - Teams with low adoption (intervention needed)
@@ -467,7 +481,7 @@ OPTIONAL MATCH (d)-[:CITES|SUPERSEDES|BASED_ON]->(prior:Decision)
 RETURN count(prior) * 100.0 / count(d) as reuse_rate
 ```
 
-### Knowledge Graph Density
+### Context Graph Density
 
 ```cypher
 MATCH (n) WHERE n.project = $project
