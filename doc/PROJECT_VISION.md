@@ -1,4 +1,165 @@
-# Universal Context Graph: A Domain-Agnostic Research Partner
+# ccmemory: The Cognitive Coefficient
+
+## The Problem
+
+Every time you start a conversation with ChatGPT, Claude, or any AI assistant, you're talking to a stranger. It doesn't know your project. It doesn't know what you tried last week. It doesn't remember that "the client" means Acme Corp and they have unusual requirements.
+
+So you explain. Every. Single. Time.
+
+And when it gives you advice, it's generic — it doesn't know what you've already tried, what failed, or what constraints actually matter in your situation.
+
+## The Solution
+
+**ccmemory gives AI assistants persistent memory.** They remember your projects, your decisions, your preferences, and what's been tried before.
+
+**Three things change:**
+
+1. **Less repetition** — Stop re-explaining context. The AI knows your history.
+
+2. **Better results over time** — The AI learns what works for *you*. Corrections you provide today improve every future conversation.
+
+3. **Proactive insights** — With enough accumulated context, the AI starts noticing patterns you haven't seen:
+   - "You've made 3 exceptions to the 'always use middleware' rule — maybe it's not the right rule?"
+   - "This problem looks similar to what you solved in Project X last October"
+   - "Based on the last 5 retrospectives, Monday deployments have 2x the issues"
+   - "Your hypothesis about the auth bottleneck now has 4 supporting data points"
+
+This applies whether you're an individual contributor solving technical puzzles or a manager tracking team patterns and strategy.
+
+### How This Differs from Copilot, RAG, and Enterprise Search
+
+You might think: "Doesn't Microsoft Copilot already do this with its Work/Web modes?"
+
+Not quite. Here's the difference:
+
+| Capability | Copilot Work / Enterprise RAG | ccmemory |
+|------------|------------------------------|----------|
+| **What it searches** | Existing docs, emails, chats, calendars | Decisions, corrections, reasoning from AI conversations |
+| **When content is created** | Separately, by humans, before you search | Automatically, during AI conversations, as you work |
+| **Learning** | Static — finds what exists | Living — improves from your corrections over time |
+| **What's preserved** | Information ("what") | Reasoning ("why" and "what didn't work") |
+
+**The analogy**: Copilot Work is a librarian who searches your company's files. ccmemory is a colleague who was in every meeting, remembers every decision, and learns your preferences over time.
+
+They're complementary: Copilot finds your documents; ccmemory remembers your thinking.
+
+## The Cognitive Coefficient
+
+Think of AI effectiveness as a multiplier on your input:
+
+```
+Traditional AI (stateless):
+  Session 1:  Your input × 1.0 = Output
+  Session 2:  Your input × 1.0 = Output  (forgot everything)
+  Session 50: Your input × 1.0 = Output  (still a stranger)
+
+With ccmemory:
+  Session 1:  Your input × 1.0 = Output + Memory
+  Session 10: Your input × 1.5 = Output  (knows your patterns)
+  Session 50: Your input × 3.0 = Output  (deep context)
+```
+
+The "cognitive coefficient" grows because:
+- **Less input needed** — Context is already there
+- **Fewer corrections** — Past mistakes aren't repeated
+- **Smarter suggestions** — Patterns emerge from accumulated history
+
+**The question that makes other AI tools obsolete**: *"Why would I explain this again to a tool that will forget, when I have one that remembers?"*
+
+---
+
+## Value Dashboards
+
+### For Individual Contributors: A Thinking Surface
+
+The dashboard isn't metrics — it's a **tool for working through problems**:
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  CURRENT CONTEXT: auth-service refactor                                     │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  RELEVANT HISTORY                        OPEN QUESTIONS                     │
+│  ┌────────────────────────────────┐     ┌─────────────────────────────────┐ │
+│  │ Dec 12: Chose JWT over session │     │ ? Token refresh during long ops │ │
+│  │   → "Stateless for scaling"    │     │ ? Blast radius if auth is down  │ │
+│  │ Dec 15: CORRECTION — refresh   │     │ ? Retry in client or gateway?   │ │
+│  │   tokens need server state     │     └─────────────────────────────────┘ │
+│  │ Jan 2: Exception — bypass for  │                                         │
+│  │   health checks                │     THINGS THAT DIDN'T WORK             │
+│  └────────────────────────────────┘     ┌─────────────────────────────────┐ │
+│                                         │ ✗ Exponential backoff → cascade │ │
+│                                         │ ✗ Shared Redis → couldn't scale │ │
+│                                         └─────────────────────────────────┘ │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  AI SUGGESTIONS                                                             │
+│  ┌────────────────────────────────────────────────────────────────────────┐ │
+│  │                                                                        │ │
+│  │  PATTERNS NOTICED                                                      │ │
+│  │  ├─ ⚡ Similar to API gateway work from October — same auth pattern     │ │
+│  │  └─ ⚡ You've made 3 exceptions to "always use middleware" — revisit?   │ │
+│  │                                                                        │ │
+│  │  HYPOTHESES                                                            │ │
+│  │  ├─ 💡 Connection pool exhaustion causing timeouts (3/4 evidence)      │ │
+│  │  │     [Click to view test instructions]                               │ │
+│  │  └─ 💡 Auth latency correlates with cache miss rate (2/3 evidence)     │ │
+│  │        [Click to view test instructions]                               │ │
+│  │                                                                        │ │
+│  │  SUGGESTED PRIORITIES                                                  │ │
+│  │  ├─ 🎯 Resolve token refresh question before scaling work              │ │
+│  │  └─ 🎯 The Redis failure suggests: revisit caching strategy first      │ │
+│  │                                                                        │ │
+│  │  STRATEGY CONSIDERATIONS                                               │ │
+│  │  └─ 📊 Based on 5 similar refactors: API-first approach had 40% less   │ │
+│  │        rework — consider starting with contract definition             │ │
+│  │                                                                        │ │
+│  └────────────────────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+What this shows:
+- What past decisions constrain this work
+- What questions are still unanswered
+- What's already been tried and failed
+- **Patterns** the AI has noticed across your work
+- **Hypotheses** with evidence and testable instructions
+- **Priority suggestions** based on dependencies and past outcomes
+- **Strategy recommendations** derived from similar past work
+
+### For Managers & Leaders: Team Intelligence
+
+```
+┌──────────────────────────────────────────────────────────────────────────────┐
+│  Q4 2024 — Engineering Organization                                          │
+├──────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  TEAM EFFECTIVENESS                      BUSINESS IMPACT                     │
+│  ┌────────────────────────────────┐     ┌─────────────────────────────────┐  │
+│  │ Avg coefficient: 2.4x          │     │ 847 hours saved ($127K value)   │  │
+│  │ Growth: ↑ 15% this quarter     │     │ Project cycle time: -18%        │  │
+│  │                                │     │ Defects in production: -23%     │  │
+│  │ ████████████████████░░░░ 2.4x  │     │ New hire ramp-up: 38% faster    │  │
+│  │ Oct   Nov   Dec   Jan          │     └─────────────────────────────────┘  │
+│  └────────────────────────────────┘                                          │
+│                                                                              │
+│  AI-SURFACED INSIGHTS                    KNOWLEDGE RETENTION                 │
+│  ┌────────────────────────────────┐     ┌─────────────────────────────────┐  │
+│  │ ⚡ Monday deploys: 2x issues    │     │ 12,847 decisions captured       │  │
+│  │ ⚡ Auth patterns diverging      │     │ 94% knowledge retention rate    │  │
+│  │    across 3 teams — align?     │     │                                 │  │
+│  │ ⚡ Hypothesis confirmed: cache  │     │ 2 team members left this qtr    │  │
+│  │    warming approach working    │     │ → 0 knowledge lost              │  │
+│  └────────────────────────────────┘     └─────────────────────────────────┘  │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+What this shows:
+- Is the team getting more effective over time?
+- What's the dollar impact?
+- What patterns has the AI noticed across the organization?
+- What institutional knowledge is preserved vs. at risk?
+
+---
 
 ## Table of Contents
 

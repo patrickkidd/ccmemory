@@ -1,6 +1,32 @@
 # ccmemory
 
-**Persistent memory for Claude Code. Never re-explain context again.**
+**Persistent memory for Claude Code. The longer you use it, the smarter it gets.**
+
+---
+
+## The Problem
+
+Every AI conversation starts from zero. You explain your project, your preferences, your constraints—then the session ends and it's all forgotten. Tomorrow, you're talking to a stranger again.
+
+**ccmemory fixes this.** Decisions, corrections, and context accumulate over time. Session 50 is dramatically more effective than session 1.
+
+```
+Without memory:  Your input × 1.0 = Output  (always a stranger)
+With ccmemory:   Your input × 3.0 = Output  (deep context, fewer mistakes)
+```
+
+### Not Just Another RAG Tool
+
+| Capability | Copilot Work / Enterprise Search | ccmemory |
+|------------|----------------------------------|----------|
+| **Searches** | Existing docs and files | Decisions, corrections, reasoning |
+| **Content created** | Before you search | During AI conversations |
+| **Learning** | Static | Improves over time |
+| **Preserves** | Information ("what") | Reasoning ("why") |
+
+Enterprise search finds documents. ccmemory remembers why you made decisions.
+
+---
 
 ## TLDR: 2-Minute Setup
 
@@ -74,35 +100,39 @@ Session 2: "Why do we use F1 scoring?"
 
 ---
 
-## Immediate Value: The Dashboard
-
-From day one, you get visibility into your development knowledge:
+## The Dashboard: A Thinking Surface
 
 ```bash
 ccmemory dashboard
 ```
 
-Opens a browser showing:
-- **Decision timeline** — What was decided, when, by whom
-- **Correction frequency** — How often Claude's understanding gets corrected
-- **Exception patterns** — Rules that keep getting broken (maybe they're bad rules)
-- **Knowledge gaps** — Topics with many questions, few decisions
+**For individuals**: A workspace for problem-solving, not vanity metrics.
 
-Even before the AI uses this data, *you* can see your accumulated institutional knowledge.
+- **Relevant history** — Past decisions that apply to your current work
+- **Open questions** — Unresolved issues Claude flagged
+- **What didn't work** — Failed approaches to avoid repeating
+- **AI suggestions** — Patterns, hypotheses, and strategic considerations surfaced from your accumulated context
+
+**For managers**: Team intelligence and business impact.
+
+- **Cognitive coefficient** — Is the team's AI effectiveness improving over time?
+- **Knowledge retention** — What happens when someone leaves?
+- **Onboarding speed** — How fast do new hires reach productivity?
+- **Loop efficiency** — How many iterations per human checkpoint?
 
 ---
 
 ## Enterprise Telemetry
 
-ccmemory tracks metrics that matter to leadership:
+The cognitive coefficient must correlate with real KPIs:
 
-| Metric | What It Measures | Why It Matters |
-|--------|------------------|----------------|
-| **Re-explanation Rate** | How often the same context is re-provided | Direct time savings |
-| **Decision Reuse** | How often past decisions inform current work | Institutional knowledge compounding |
-| **Correction Velocity** | Time from wrong → right understanding | Learning speed |
-| **Cross-Session Continuity** | % of sessions that reference prior context | Memory effectiveness |
-| **Time-to-Context** | Seconds to surface relevant precedent | Developer wait time |
+| ccmemory Metric | Business KPI | Correlation |
+|-----------------|--------------|-------------|
+| Re-explanation rate ↓ | Cycle time ↓ | Less context switching |
+| Decision reuse ↑ | Defect rate ↓ | Fewer repeated mistakes |
+| Correction velocity ↓ | Velocity ↑ | Faster course correction |
+| Knowledge preservation ↑ | Onboarding time ↓ | Institutional memory persists |
+| Loop efficiency ↑ | Developer leverage ↑ | More done per human checkpoint |
 
 ### For the C-Suite
 
@@ -110,11 +140,11 @@ ccmemory tracks metrics that matter to leadership:
 ccmemory report --format=executive --period=quarterly
 ```
 
-Generates:
-- **Hours saved** from reduced re-explanation (measurable)
-- **Decisions preserved** vs. tribal knowledge (quantifiable risk reduction)
-- **Knowledge graph growth** over time (institutional asset building)
-- **Team knowledge sharing** metrics (collaboration visibility)
+Generates measurable ROI:
+- **Hours saved** from reduced re-explanation
+- **Decisions preserved** vs. tribal knowledge lost
+- **Onboarding acceleration** — new hires reach productivity faster
+- **Cognitive coefficient trend** — is AI effectiveness compounding?
 
 See [doc/TELEMETRY.md](doc/TELEMETRY.md) for the full enterprise metrics framework.
 
@@ -169,6 +199,12 @@ See [doc/IMPLEMENTATION_PLAN.md](doc/IMPLEMENTATION_PLAN.md) for build specifica
 
 ---
 
+## Inspiration
+
+This project builds on ideas from [AI's trillion-dollar opportunity: Context graphs](https://foundationcapital.com/ais-trillion-dollar-opportunity-context-graphs/) by Gupta & Garg at Foundation Capital — the insight that AI tools fragment organizational knowledge across sessions, and that capturing decision traces (not just state) is where the real value lies.
+
+---
+
 ## License
 
-MIT
+Apache 2.0
