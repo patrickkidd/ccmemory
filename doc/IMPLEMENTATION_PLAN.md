@@ -16,7 +16,35 @@ ccmemory captures how understanding evolves — decisions made, corrections rece
 
 This document specifies exactly what needs to be built to make the Universal Context Graph operational. It is written for a developer (human or AI) to execute without further architectural guidance.
 
-See [UNIVERSAL_CONTEXT_GRAPH.md](UNIVERSAL_CONTEXT_GRAPH.md) for the full conceptual architecture.
+See [PROJECT_VISION.md](PROJECT_VISION.md) for the full conceptual architecture.
+
+## Goal: Complete Capture & Retrieval
+
+The plugin's mission reduces to two requirements:
+
+**A) Remember *everything* from Claude Code conversations that could be pertinent to future decisions**
+
+This means capturing:
+- **Decisions** — what was chosen, why, and when to revisit
+- **Corrections** — user fixing Claude's understanding (highest value)
+- **Exceptions** — rules that don't apply in this context
+- **Insights** — realizations, analyses, strategy crystallizations
+- **Questions & Answers** — clarifying Q&A that reveals constraints/preferences
+- **Failed Approaches** — what was tried and didn't work
+- **References** — URLs, file paths, documentation mentioned
+- **Raw transcripts** — full conversation stored on Session nodes as ground truth
+
+**B) Organize that memory for efficient and *complete* access during inference**
+
+"Complete" means every pertinent detail is retrievable when needed. This requires:
+- **Full-text search** — keyword matching across all node types
+- **Semantic search** — vector embeddings for conceptually similar items with different wording
+- **Topic queries** — "everything about X" returns all node types, not just decisions
+- **Temporal queries** — "what did we decide last week about Y"
+- **Detection confidence** — so low-confidence captures can be deprioritized
+- **Relevance ranking** — current task context affects what gets surfaced
+
+The goal is *never lose information that could matter*, then *always find relevant information when it matters*.
 
 ## Deliverable
 
@@ -112,7 +140,11 @@ ccmemory/
 ├── prompts/
 │   ├── detect_decision.md
 │   ├── detect_correction.md
-│   └── detect_exception.md
+│   ├── detect_exception.md
+│   ├── detect_insight.md
+│   ├── detect_question.md
+│   ├── detect_failed_approach.md
+│   └── detect_reference.md
 ├── skills/
 │   └── ccmemory/
 │       └── SKILL.md
@@ -196,7 +228,7 @@ volumes:
 **File:** `docker/init.cypher`
 
 ```cypher
-// Constraints
+// Constraints — Core node types
 CREATE CONSTRAINT session_id IF NOT EXISTS FOR (s:Session) REQUIRE s.id IS UNIQUE;
 CREATE CONSTRAINT decision_id IF NOT EXISTS FOR (d:Decision) REQUIRE d.id IS UNIQUE;
 CREATE CONSTRAINT correction_id IF NOT EXISTS FOR (c:Correction) REQUIRE c.id IS UNIQUE;
@@ -205,7 +237,12 @@ CREATE CONSTRAINT observation_id IF NOT EXISTS FOR (o:Observation) REQUIRE o.id 
 CREATE CONSTRAINT insight_id IF NOT EXISTS FOR (i:Insight) REQUIRE i.id IS UNIQUE;
 CREATE CONSTRAINT project_name IF NOT EXISTS FOR (p:Project) REQUIRE p.name IS UNIQUE;
 
-// Indexes
+// Constraints — Extended node types for complete capture
+CREATE CONSTRAINT question_id IF NOT EXISTS FOR (q:Question) REQUIRE q.id IS UNIQUE;
+CREATE CONSTRAINT failedapproach_id IF NOT EXISTS FOR (f:FailedApproach) REQUIRE f.id IS UNIQUE;
+CREATE CONSTRAINT reference_id IF NOT EXISTS FOR (r:Reference) REQUIRE r.id IS UNIQUE;
+
+// Indexes — Core
 CREATE INDEX session_project IF NOT EXISTS FOR (s:Session) ON (s.project);
 CREATE INDEX session_time IF NOT EXISTS FOR (s:Session) ON (s.started_at);
 CREATE INDEX session_user IF NOT EXISTS FOR (s:Session) ON (s.user_id);
@@ -215,13 +252,28 @@ CREATE INDEX decision_branch IF NOT EXISTS FOR (d:Decision) ON (d.branch);
 CREATE INDEX decision_project_status IF NOT EXISTS FOR (d:Decision) ON (d.project, d.status);
 CREATE INDEX insight_category IF NOT EXISTS FOR (i:Insight) ON (i.category);
 
-// Full-text search
+// Indexes — Extended types
+CREATE INDEX question_time IF NOT EXISTS FOR (q:Question) ON (q.timestamp);
+CREATE INDEX failedapproach_time IF NOT EXISTS FOR (f:FailedApproach) ON (f.timestamp);
+CREATE INDEX reference_type IF NOT EXISTS FOR (r:Reference) ON (r.type);
+
+// Full-text search — for keyword matching
 CREATE FULLTEXT INDEX decision_search IF NOT EXISTS
   FOR (d:Decision) ON EACH [d.description, d.rationale, d.revisit_trigger];
 CREATE FULLTEXT INDEX correction_search IF NOT EXISTS
   FOR (c:Correction) ON EACH [c.wrong_belief, c.right_belief];
 CREATE FULLTEXT INDEX insight_search IF NOT EXISTS
   FOR (i:Insight) ON EACH [i.summary, i.detail, i.implications];
+CREATE FULLTEXT INDEX question_search IF NOT EXISTS
+  FOR (q:Question) ON EACH [q.question, q.answer, q.context];
+CREATE FULLTEXT INDEX failedapproach_search IF NOT EXISTS
+  FOR (f:FailedApproach) ON EACH [f.approach, f.outcome, f.lesson];
+
+// Vector indexes — for semantic similarity (requires Neo4j 5.13+)
+// CREATE VECTOR INDEX decision_embedding IF NOT EXISTS FOR (d:Decision) ON d.embedding
+//   OPTIONS {indexConfig: {`vector.dimensions`: 1536, `vector.similarity_function`: 'cosine'}};
+// CREATE VECTOR INDEX correction_embedding IF NOT EXISTS FOR (c:Correction) ON c.embedding
+//   OPTIONS {indexConfig: {`vector.dimensions`: 1536, `vector.similarity_function`: 'cosine'}};
 ```
 
 **Decision Node Properties:**
@@ -240,6 +292,38 @@ CREATE FULLTEXT INDEX insight_search IF NOT EXISTS
 - `detail` — full insight content
 - `implications` — what this means for decisions/strategy
 - `trigger` — what prompted this insight
+
+**Question Node Properties** (clarifying Q&A exchanges):
+- `id`, `timestamp`, `project`, `session_id`
+- `question` — the question Claude asked
+- `answer` — the user's response
+- `context` — what prompted the question
+- `detection_confidence` — how confident we are this was a meaningful Q&A
+
+**FailedApproach Node Properties** (tried and didn't work):
+- `id`, `timestamp`, `project`, `session_id`
+- `approach` — what was attempted
+- `outcome` — what happened (the failure)
+- `lesson` — why it failed, what to do instead
+- `detection_confidence` — confidence in detection
+
+**Reference Node Properties** (external resources mentioned):
+- `id`, `timestamp`, `project`, `session_id`
+- `type` — "url", "file_path", "documentation", "paper"
+- `uri` — the actual reference
+- `context` — why it was mentioned
+- `description` — what it contains (if known)
+
+**Session Node Properties** (includes raw transcript):
+- `id`, `project`, `user_id`, `started_at`, `ended_at`
+- `transcript` — full raw conversation exchange (compressed if >100KB)
+- `summary` — auto-generated summary for quick reference
+- `branch` — git branch or work stream identifier
+
+**Common Properties** (on all captured nodes):
+- `detection_confidence` — float 0.0-1.0, how confident detection was
+- `detection_method` — "pattern_match", "llm_extraction", "explicit_user_request"
+- `embedding` — vector embedding for semantic search (Phase 2)
 
 ### 4. MCP Server
 
@@ -370,6 +454,48 @@ class GraphClient:
                 query=query, limit=limit
             )
             return [(record["node"], record["score"]) for record in result]
+
+    def query_by_topic(self, topic: str, project: str, limit: int = 20):
+        """Query ALL node types related to a topic using full-text search."""
+        with self.driver.session() as session:
+            # Query each full-text index and combine results
+            results = {"decisions": [], "corrections": [], "insights": [],
+                       "questions": [], "failed_approaches": []}
+
+            for index, key in [("decision_search", "decisions"),
+                               ("correction_search", "corrections"),
+                               ("insight_search", "insights"),
+                               ("question_search", "questions"),
+                               ("failedapproach_search", "failed_approaches")]:
+                try:
+                    result = session.run(
+                        f"""
+                        CALL db.index.fulltext.queryNodes("{index}", $query)
+                        YIELD node, score
+                        WHERE node.project = $project
+                        RETURN node, score ORDER BY score DESC LIMIT $limit
+                        """,
+                        query=topic, project=project, limit=limit
+                    )
+                    results[key] = [(dict(r["node"]), r["score"]) for r in result]
+                except Exception:
+                    pass  # Index may not exist yet
+
+            return results
+
+    def query_semantic(self, embedding: list, project: str, limit: int = 10):
+        """Query by vector similarity (requires embeddings on nodes)."""
+        with self.driver.session() as session:
+            result = session.run(
+                """
+                CALL db.index.vector.queryNodes('decision_embedding', $limit, $embedding)
+                YIELD node, score
+                WHERE node.project = $project
+                RETURN node, score
+                """,
+                embedding=embedding, project=project, limit=limit
+            )
+            return [(dict(record["node"]), record["score"]) for record in result]
 
 # Singleton
 _client = None
@@ -694,6 +820,118 @@ If not an insight:
 }
 ```
 
+**File:** `prompts/detect_question.md`
+
+```markdown
+Analyze this exchange for meaningful clarifying Q&A.
+
+CLAUDE'S MESSAGE:
+{claude_response}
+
+USER'S RESPONSE:
+{message}
+
+Did Claude ask a clarifying question that the user answered with useful information?
+Look for:
+1. Direct questions answered: "What's the timeout?" → "30 seconds"
+2. Preference elicitation: "Would you prefer X or Y?" → "Definitely Y"
+3. Constraint discovery: "Are there any limitations?" → "Yes, it must work offline"
+4. Context gathering: "What's the use case?" → detailed explanation
+
+NOT a meaningful Q&A:
+- Rhetorical questions
+- Yes/no confirmations without substance
+- Questions about what to do next (process, not content)
+
+If this is meaningful Q&A, output JSON:
+{
+  "is_question": true,
+  "question": {
+    "question": "...",   // What Claude asked
+    "answer": "...",     // User's response (summarized if long)
+    "context": "...",    // What prompted the question
+    "confidence": 0.0-1.0
+  }
+}
+
+If not meaningful Q&A:
+{
+  "is_question": false
+}
+```
+
+**File:** `prompts/detect_failed_approach.md`
+
+```markdown
+Analyze this exchange for failed approaches worth remembering.
+
+CONVERSATION CONTEXT:
+{context}
+
+CURRENT MESSAGE:
+{message}
+
+Did something get tried and not work? Look for:
+1. Explicit failure: "That didn't work", "It failed because..."
+2. Abandoned approach: "Let's try something else, X isn't working"
+3. Learning from error: "Turns out X causes Y problem"
+4. Performance issues: "Too slow", "Uses too much memory"
+5. Compatibility issues: "Doesn't work with our version"
+
+This is DIFFERENT from corrections (wrong belief). A failed approach is:
+- Correct understanding of what to do
+- But the approach itself didn't produce desired outcome
+
+If this is a failed approach, output JSON:
+{
+  "is_failed_approach": true,
+  "failed_approach": {
+    "approach": "...",   // What was attempted
+    "outcome": "...",    // What happened (the failure)
+    "lesson": "...",     // Why it failed, what to do instead
+    "confidence": 0.0-1.0
+  }
+}
+
+If not a failed approach:
+{
+  "is_failed_approach": false
+}
+```
+
+**File:** `prompts/detect_reference.md`
+
+```markdown
+Analyze this message for external references worth capturing.
+
+CURRENT MESSAGE:
+{message}
+
+Does the message mention or link to external resources? Look for:
+1. URLs: http://, https://, or domain mentions
+2. File paths: /path/to/file, ./relative/path, ~/home/path
+3. Documentation references: "See the docs at...", "According to the README..."
+4. Paper/article citations: Author names, publication titles, DOIs
+
+If external references found, output JSON:
+{
+  "has_references": true,
+  "references": [
+    {
+      "type": "url" | "file_path" | "documentation" | "paper",
+      "uri": "...",        // The actual reference
+      "context": "...",    // Why it was mentioned
+      "description": "..." // What it contains, if evident
+    }
+  ]
+}
+
+If no references:
+{
+  "has_references": false
+}
+```
+
 ### 7. Skill File
 
 **File:** `skills/ccmemory/SKILL.md`
@@ -709,6 +947,7 @@ You have access to a context graph that captures decisions, corrections, and exc
 - `query_context` — Get relevant past context for current task
 - `search_precedent` — Find similar past decisions or exceptions
 - `trace_decision` — Trace why something is the way it is
+- `query_by_topic` — Get ALL node types related to a topic (decisions, corrections, questions, failed approaches, references)
 
 ## When to Use
 
@@ -720,6 +959,9 @@ Use when making a decision to check if similar situations have been handled befo
 
 ### trace_decision
 Use when asked "why is it this way?" to find the decision chain.
+
+### query_by_topic
+Use when you need *everything* about a topic — not just decisions, but corrections, failed approaches, questions answered, and references. Example: "What do we know about authentication in this project?"
 
 ## Behaviors
 

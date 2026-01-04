@@ -1,5 +1,32 @@
 # Universal Context Graph: A Domain-Agnostic Research Partner
 
+## Table of Contents
+
+- [Executive Summary](#executive-summary)
+- [The Problem: We Only Have Half of Time](#the-problem-we-only-have-half-of-time)
+- [Conceptual Foundation: Iterative Empiricism](#conceptual-foundation-iterative-empiricism)
+- [Plugin Architecture: Turnkey + Domain-Specific](#plugin-architecture-turnkey--domain-specific)
+- [The Two-Domain Architecture](#the-two-domain-architecture)
+- [Domain-Specific Instantiation](#domain-specific-instantiation)
+- [The Bridge Layer: Where Magic Happens](#the-bridge-layer-where-magic-happens)
+- [Active Research: Domain 2 as Living Knowledge](#active-research-domain-2-as-living-knowledge)
+- [The Co-Thinker Model](#the-co-thinker-model)
+- [Data Model Extensions](#data-model-extensions)
+- [Import Pipeline](#import-pipeline)
+- [Context Injection: How Knowledge Gets Used](#context-injection-how-knowledge-gets-used)
+- [MCP Server: Additional Tools](#mcp-server-additional-tools)
+- [Architecture Diagram](#architecture-diagram)
+- [Implementation Phases](#implementation-phases-revised)
+- [Core Principles](#core-principles)
+- [Migration Path](#migration-path-markdown-context-systems--universal-graph)
+- [Comparison: Original Plan vs. Universal Graph](#comparison-original-plan-vs-universal-graph)
+- [Success Metrics](#success-metrics-revised)
+- [Example: Multi-Domain Session](#example-multi-domain-session)
+- [Theoretical Foundation](#theoretical-foundation)
+- [References](#references)
+
+---
+
 ## Executive Summary
 
 An evolution of the event graph concept into a **universal context management system** that works equally for software projects, career consulting, medical research, or any complex domain requiring accumulated understanding over time.
@@ -1148,6 +1175,24 @@ what's truly critical path?"
 ---
 
 ## Theoretical Foundation
+
+### Positioning: What This Is
+
+One way to understand this system: **GraphRAG on a living, learning knowledge graph**.
+
+Traditional approaches are read-only on the knowledge base:
+
+| Approach | When Populated | What It Stores | Limitation |
+|----------|----------------|----------------|------------|
+| Knowledge Graph | Before use (curated) | State ("X is Y") | Static, requires curation |
+| GraphRAG | Before use (indexed) | Entities from docs | Read-only; docs age |
+| **ccmemory** | *During* use (continuous) | Events ("We decided X because Y") | — |
+
+The critical difference: every session both **consumes** and **produces** graph data. The graph doesn't just grow — it learns (corrections update beliefs, failed approaches prevent mistakes, revisit triggers surface stale decisions).
+
+GraphRAG is a snapshot. This is a stream.
+
+### Influences
 
 This architecture synthesizes insights from:
 
