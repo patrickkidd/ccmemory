@@ -4,6 +4,18 @@
 
 ---
 
+## In-Depth
+
+- [doc/DEVELOPMENT.md](doc/DEVELOPMENT.md) — Development setup
+- [doc/PROJECT_VISION.md](doc/PROJECT_VISION.md) — Full conceptual architecture
+- [doc/TELEMETRY.md](doc/TELEMETRY.md) — Enterprise metrics framework
+- [doc/IMPLEMENTATION_PLAN.md](doc/IMPLEMENTATION_PLAN.md) — Phase 1 build specs
+
+Inspired by [AI's trillion-dollar opportunity: Context graphs](https://foundationcapital.com/ais-trillion-dollar-opportunity-context-graphs/) by Gupta & Garg.
+
+
+---
+
 ## The Problem
 
 Every AI conversation starts from zero. You explain your project, your preferences, your constraints—then the session ends and it's all forgotten. Tomorrow, you're talking to a stranger again.
@@ -103,17 +115,6 @@ docker compose up -d      # Start
 docker compose down       # Stop
 docker compose logs -f    # View logs
 ```
-
----
-
-## In-Depth
-
-- [doc/DEVELOPMENT.md](doc/DEVELOPMENT.md) — Development setup
-- [doc/PROJECT_VISION.md](doc/PROJECT_VISION.md) — Full conceptual architecture
-- [doc/TELEMETRY.md](doc/TELEMETRY.md) — Enterprise metrics framework
-- [doc/IMPLEMENTATION_PLAN.md](doc/IMPLEMENTATION_PLAN.md) — Phase 1 build specs
-
-Inspired by [AI's trillion-dollar opportunity: Context graphs](https://foundationcapital.com/ais-trillion-dollar-opportunity-context-graphs/) by Gupta & Garg.
 
 ---
 
