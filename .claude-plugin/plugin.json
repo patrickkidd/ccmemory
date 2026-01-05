@@ -1,0 +1,25 @@
+{
+  "name": "ccmemory",
+  "version": "0.1.0",
+  "description": "Context graph for persistent memory across Claude Code sessions",
+  "author": {
+    "name": "Patrick Stinson",
+    "url": "https://github.com/patrickkidd"
+  },
+  "homepage": "https://github.com/patrickkidd/ccmemory",
+  "hooks": "./hooks/hooks.json",
+  "skills": "./skills/",
+  "mcpServers": {
+    "ccmemory": {
+      "command": "python",
+      "args": ["-m", "ccmemory.server"],
+      "cwd": "${CLAUDE_PLUGIN_ROOT}/mcp-server/src",
+      "env": {
+        "VOYAGE_API_KEY": "${VOYAGE_API_KEY}",
+        "CCMEMORY_NEO4J_URI": "${CCMEMORY_NEO4J_URI:-bolt://localhost:7687}",
+        "CCMEMORY_NEO4J_PASSWORD": "${CCMEMORY_NEO4J_PASSWORD:-ccmemory}",
+        "CCMEMORY_USER_ID": "${CCMEMORY_USER_ID}"
+      }
+    }
+  }
+}

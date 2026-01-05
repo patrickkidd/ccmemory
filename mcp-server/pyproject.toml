@@ -1,0 +1,48 @@
+[project]
+name = "ccmemory"
+version = "0.1.0"
+description = "Context graph for persistent memory across Claude Code sessions"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "mcp>=1.0.0",
+    "neo4j>=5.0.0",
+    "pydantic>=2.0.0",
+    "anthropic>=0.40.0",
+    "voyageai>=0.3.0",
+    "numpy>=1.24.0",
+    "flask>=3.0.0",
+    "click>=8.0.0",
+    "httpx>=0.27.0",
+    "beautifulsoup4>=4.12.0",
+    "pymupdf>=1.24.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "pytest-cov>=4.0.0",
+]
+
+[project.scripts]
+ccmemory = "ccmemory.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/ccmemory"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short"
+asyncio_mode = "auto"
+markers = [
+    "unit: Unit tests (no external dependencies)",
+    "integration: Integration tests (requires Neo4j)",
+    "e2e: End-to-end tests (full workflow)",
+]

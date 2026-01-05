@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ccmemory Dashboard - {{ project }}</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@0.9.4/css/bulma.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        .metric-card {
+            text-align: center;
+        }
+        .metric-value {
+            font-size: 2.5rem;
+            font-weight: bold;
+        }
+        .metric-label {
+            font-size: 0.9rem;
+        }
+        .context-item {
+            margin-bottom: 1rem;
+            padding: 1rem;
+            border-radius: 4px;
+        }
+        .context-decision { border-left: 4px solid #3273dc; }
+        .context-correction { border-left: 4px solid #ff3860; }
+        .context-insight { border-left: 4px solid #23d160; }
+        .context-question { border-left: 4px solid #ffdd57; }
+        .context-failed { border-left: 4px solid #f14668; }
+        .coefficient-gauge {
+            width: 200px;
+            height: 100px;
+            margin: 0 auto;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar is-dark">
+        <div class="navbar-brand">
+            <span class="navbar-item is-size-4">
+                <strong>ccmemory</strong>&nbsp;Dashboard
+            </span>
+        </div>
+        <div class="navbar-menu">
+            <div class="navbar-end">
+                <div class="navbar-item">
+                    <span class="tag is-info is-medium">{{ project }}</span>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <section class="section">
+        <div class="container">
+            <!-- Metrics Row -->
+            <div class="columns is-multiline">
+                <div class="column is-3">
+                    <div class="box metric-card">
+                        <p class="metric-value has-text-primary" id="coefficient">-</p>
+                        <p class="metric-label">Cognitive Coefficient</p>
+                    </div>
+                </div>
+                <div class="column is-3">
+                    <div class="box metric-card">
+                        <p class="metric-value has-text-info" id="decisions">-</p>
+                        <p class="metric-label">Total Decisions</p>
+                    </div>
+                </div>
+                <div class="column is-3">
+                    <div class="box metric-card">
+                        <p class="metric-value has-text-danger" id="corrections">-</p>
+                        <p class="metric-label">Corrections</p>
+                    </div>
+                </div>
+                <div class="column is-3">
+                    <div class="box metric-card">
+                        <p class="metric-value has-text-success" id="insights">-</p>
+                        <p class="metric-label">Insights</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Secondary Metrics -->
+            <div class="columns is-multiline">
+                <div class="column is-3">
+                    <div class="box metric-card">
+                        <p class="metric-value has-text-grey" id="sessions">-</p>
+                        <p class="metric-label">Sessions</p>
+                    </div>
+                </div>
+                <div class="column is-3">
+                    <div class="box metric-card">
+                        <p class="metric-value has-text-warning" id="failed">-</p>
+                        <p class="metric-label">Failed Approaches</p>
+                    </div>
+                </div>
+                <div class="column is-3">
+                    <div class="box metric-card">
+                        <p class="metric-value" id="reuse-rate">-</p>
+                        <p class="metric-label">Decision Reuse Rate</p>
+                    </div>
+                </div>
+                <div class="column is-3">
+                    <div class="box metric-card">
+                        <p class="metric-value" id="density">-</p>
+                        <p class="metric-label">Graph Density</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Recent Context -->
+            <div class="columns">
+                <div class="column">
+                    <h2 class="title is-4">Recent Context</h2>
+                    <div id="recent-context">
+                        <progress class="progress is-small is-primary" max="100">Loading...</progress>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Search -->
+            <div class="columns">
+                <div class="column">
+                    <h2 class="title is-4">Search</h2>
+                    <div class="field has-addons">
+                        <div class="control is-expanded">
+                            <input class="input" type="text" id="search-input" placeholder="Search decisions, corrections, insights...">
+                        </div>
+                        <div class="control">
+                            <button class="button is-primary" onclick="doSearch()">Search</button>
+                        </div>
+                    </div>
+                    <div id="search-results"></div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <script>
+        const project = "{{ project }}";
+
+        async function loadMetrics() {
+            try {
+                const response = await fetch(`/api/metrics?project=${project}`);
+                const data = await response.json();
+
+                document.getElementById('coefficient').textContent = data.cognitive_coefficient.toFixed(2) + 'x';
+                document.getElementById('decisions').textContent = data.total_decisions;
+                document.getElementById('corrections').textContent = data.total_corrections;
+                document.getElementById('insights').textContent = data.total_insights;
+                document.getElementById('sessions').textContent = data.total_sessions;
+                document.getElementById('failed').textContent = data.total_failed_approaches;
+                document.getElementById('reuse-rate').textContent = (data.decision_reuse_rate * 100).toFixed(1) + '%';
+                document.getElementById('density').textContent = data.graph_density.toFixed(2);
+            } catch (error) {
+                console.error('Failed to load metrics:', error);
+            }
+        }
+
+        async function loadRecentContext() {
+            try {
+                const response = await fetch(`/api/recent?project=${project}&limit=15`);
+                const data = await response.json();
+
+                const container = document.getElementById('recent-context');
+                container.innerHTML = '';
+
+                if (data.length === 0) {
+                    container.innerHTML = '<p class="has-text-grey">No context captured yet. Start a Claude Code session to begin.</p>';
+                    return;
+                }
+
+                data.forEach(item => {
+                    const div = document.createElement('div');
+                    div.className = 'context-item box';
+
+                    const nodeData = item.data;
+                    let content = '';
+                    let cssClass = '';
+
+                    if (item.type === 'DECIDED') {
+                        cssClass = 'context-decision';
+                        content = `<strong>Decision:</strong> ${nodeData.description || 'No description'}`;
+                        if (nodeData.rationale) {
+                            content += `<br><small class="has-text-grey">Rationale: ${nodeData.rationale}</small>`;
+                        }
+                    } else if (item.type === 'CORRECTED') {
+                        cssClass = 'context-correction';
+                        content = `<strong>Correction:</strong> ${nodeData.right_belief || 'No belief recorded'}`;
+                        if (nodeData.wrong_belief) {
+                            content += `<br><small class="has-text-grey">Was: ${nodeData.wrong_belief}</small>`;
+                        }
+                    } else if (item.type === 'REALIZED') {
+                        cssClass = 'context-insight';
+                        content = `<strong>Insight:</strong> ${nodeData.summary || 'No summary'}`;
+                        if (nodeData.category) {
+                            content += `<br><span class="tag is-light">${nodeData.category}</span>`;
+                        }
+                    } else if (item.type === 'TRIED') {
+                        cssClass = 'context-failed';
+                        content = `<strong>Failed Approach:</strong> ${nodeData.approach || 'No approach recorded'}`;
+                        if (nodeData.lesson) {
+                            content += `<br><small class="has-text-grey">Lesson: ${nodeData.lesson}</small>`;
+                        }
+                    } else if (item.type === 'ASKED') {
+                        cssClass = 'context-question';
+                        content = `<strong>Q:</strong> ${nodeData.question || 'No question'}<br><strong>A:</strong> ${nodeData.answer || 'No answer'}`;
+                    } else if (item.type === 'EXCEPTED') {
+                        cssClass = 'context-decision';
+                        content = `<strong>Exception:</strong> ${nodeData.justification || 'No justification'}`;
+                        if (nodeData.rule_broken) {
+                            content += `<br><small class="has-text-grey">Rule: ${nodeData.rule_broken}</small>`;
+                        }
+                    } else {
+                        content = `<strong>${item.type}:</strong> ${JSON.stringify(nodeData).substring(0, 200)}`;
+                    }
+
+                    div.classList.add(cssClass);
+                    div.innerHTML = content;
+                    container.appendChild(div);
+                });
+            } catch (error) {
+                console.error('Failed to load recent context:', error);
+                document.getElementById('recent-context').innerHTML = '<p class="has-text-danger">Failed to load context</p>';
+            }
+        }
+
+        function formatSearchItem(item, category) {
+            if (category === 'decisions') {
+                let content = `<strong>${item.description || 'No description'}</strong>`;
+                if (item.rationale) content += `<br><small class="has-text-grey">Rationale: ${item.rationale}</small>`;
+                if (item.status) content += `<br><span class="tag is-light">${item.status}</span>`;
+                return content;
+            } else if (category === 'corrections') {
+                let content = `<strong>${item.right_belief || 'No belief'}</strong>`;
+                if (item.wrong_belief) content += `<br><small class="has-text-grey">Was: ${item.wrong_belief}</small>`;
+                return content;
+            } else if (category === 'insights') {
+                let content = `<strong>${item.summary || 'No summary'}</strong>`;
+                if (item.category) content += `<br><span class="tag is-light">${item.category}</span>`;
+                return content;
+            } else if (category === 'failed_approaches') {
+                let content = `<strong>${item.approach || 'No approach'}</strong>`;
+                if (item.lesson) content += `<br><small class="has-text-grey">Lesson: ${item.lesson}</small>`;
+                return content;
+            }
+            return JSON.stringify(item).substring(0, 200);
+        }
+
+        async function doSearch() {
+            const query = document.getElementById('search-input').value;
+            if (!query) return;
+
+            try {
+                const response = await fetch(`/api/search?project=${project}&q=${encodeURIComponent(query)}`);
+                const data = await response.json();
+
+                const container = document.getElementById('search-results');
+                container.innerHTML = '';
+
+                let hasResults = false;
+                const categoryStyles = {
+                    decisions: 'context-decision',
+                    corrections: 'context-correction',
+                    insights: 'context-insight',
+                    failed_approaches: 'context-failed'
+                };
+
+                for (const [category, results] of Object.entries(data)) {
+                    if (results.length > 0) {
+                        hasResults = true;
+                        const header = document.createElement('h4');
+                        header.className = 'title is-5 mt-4';
+                        header.textContent = category.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase());
+                        container.appendChild(header);
+
+                        results.forEach(([item, score]) => {
+                            const div = document.createElement('div');
+                            div.className = `context-item box ${categoryStyles[category] || ''}`;
+                            div.innerHTML = `
+                                <span class="tag is-info">${score.toFixed(2)}</span>
+                                ${formatSearchItem(item, category)}
+                            `;
+                            container.appendChild(div);
+                        });
+                    }
+                }
+
+                if (!hasResults) {
+                    container.innerHTML = '<p class="has-text-grey">No results found</p>';
+                }
+            } catch (error) {
+                console.error('Search failed:', error);
+            }
+        }
+
+        document.getElementById('search-input').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') doSearch();
+        });
+
+        loadMetrics();
+        loadRecentContext();
+
+        setInterval(loadMetrics, 30000);
+    </script>
+</body>
+</html>
