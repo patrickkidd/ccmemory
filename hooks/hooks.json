@@ -1,20 +1,13 @@
 {
   "hooks": {
-    "PreToolUse": [
+    "SessionStart": [
       {
-        "matcher": "ccmemory_*",
         "hooks": [
           {
             "type": "command",
             "command": "${CLAUDE_PLUGIN_ROOT}/hooks/ensure-running.sh",
             "timeout": 90
-          }
-        ]
-      }
-    ],
-    "SessionStart": [
-      {
-        "hooks": [
+          },
           {
             "type": "command",
             "command": "${CLAUDE_PLUGIN_ROOT}/hooks/session_start.sh",

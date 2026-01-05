@@ -1,6 +1,6 @@
 [project]
 name = "ccmemory"
-version = "0.1.0"
+version = "0.1.1"
 description = "Context graph for persistent memory across Claude Code sessions"
 requires-python = ">=3.10"
 dependencies = [
@@ -8,7 +8,6 @@ dependencies = [
     "neo4j>=5.0.0",
     "pydantic>=2.0.0",
     "anthropic>=0.40.0",
-    "voyageai>=0.3.0",
     "numpy>=1.24.0",
     "flask>=3.0.0",
     "click>=8.0.0",

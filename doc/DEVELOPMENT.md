@@ -23,7 +23,6 @@ Changes to Python code take effect on next Claude Code restart. No hot-reload—
 - Python 3.10+
 - [uv](https://docs.astral.sh/uv/) (`curl -LsSf https://astral.sh/uv/install.sh | sh`)
 - Claude Code CLI
-- `VOYAGE_API_KEY` environment variable
 
 ## Full Setup
 
@@ -77,7 +76,7 @@ ccmemory/
 ├── mcp-server/src/ccmemory/     # MCP server + CLI source
 │   ├── server.py               # MCP entry point
 │   ├── graph.py                # Neo4j client
-│   ├── embeddings.py           # Voyage AI embeddings
+│   ├── embeddings.py           # Ollama embeddings
 │   ├── cli.py                  # CLI commands
 │   ├── tools/                  # MCP tool implementations
 │   └── detection/              # LLM-based detection
@@ -108,9 +107,11 @@ pytest tests/ -v
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `VOYAGE_API_KEY` | Yes | - | Voyage AI API key for embeddings |
+| `ANTHROPIC_API_KEY` | Yes | - | Required for detection LLM and reranking |
 | `CCMEMORY_NEO4J_URI` | No | `bolt://localhost:7687` | Neo4j connection URI |
 | `CCMEMORY_NEO4J_PASSWORD` | No | `ccmemory` | Neo4j password |
+| `CCMEMORY_OLLAMA_URL` | No | `http://ollama:11434` | Ollama server URL |
+| `CCMEMORY_OLLAMA_MODEL` | No | `all-minilm` | Embedding model |
 | `CCMEMORY_USER_ID` | No | - | User ID for team mode |
 
 ## CLI Commands (Development)

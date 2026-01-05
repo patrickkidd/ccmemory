@@ -15,7 +15,7 @@ ccmemory/
 │   └── src/ccmemory/
 │       ├── server.py            # MCP entry point (stdio or HTTP)
 │       ├── graph.py             # Neo4j client
-│       ├── embeddings.py        # Voyage AI embeddings
+│       ├── embeddings.py        # Ollama embeddings
 │       ├── cli.py               # CLI commands
 │       ├── tools/               # MCP tools
 │       └── detection/           # LLM-based detection
@@ -50,13 +50,14 @@ cd mcp-server && uv run pytest tests/ -v
 
 Set in shell or `.env` file:
 
-- `VOYAGE_API_KEY` — Required for embeddings
-- `ANTHROPIC_API_KEY` — Required for detection LLM
+- `ANTHROPIC_API_KEY` — Required for detection LLM and reranking
 - `CCMEMORY_NEO4J_PASSWORD` — Neo4j password (default: ccmemory)
 - `CCMEMORY_USER_ID` — User identity for team mode
 
 Container-internal (set in docker-compose.yml):
 - `CCMEMORY_NEO4J_URI` — Neo4j connection (default: bolt://neo4j:7687)
+- `CCMEMORY_OLLAMA_URL` — Ollama server (default: http://ollama:11434)
+- `CCMEMORY_OLLAMA_MODEL` — Embedding model (default: all-minilm)
 
 ## Code Style
 
@@ -69,6 +70,7 @@ Container-internal (set in docker-compose.yml):
 ## Architecture
 
 **Containers:**
+- `ccmemory-ollama` — Local embedding model server
 - `ccmemory-neo4j` — Graph database on ports 7474 (HTTP) and 7687 (Bolt)
 - `ccmemory-mcp` — MCP server on port 8766 (SSE)
 

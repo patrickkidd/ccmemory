@@ -15,7 +15,7 @@ PROJECT = "ccmemory"
 
 
 def zero_embedding():
-    """Return zero embedding for testing without Voyage API."""
+    """Return zero embedding for testing without Ollama."""
     return [0.0] * EMBEDDING_DIMS
 
 
@@ -48,9 +48,9 @@ def seed():
             "status": "curated"
         },
         {
-            "description": "Use Voyage AI for embeddings instead of OpenAI",
-            "rationale": "Better semantic similarity for code and technical content",
-            "options_considered": ["OpenAI ada-002", "Voyage-3", "Cohere embed-v3"],
+            "description": "Use local Ollama for embeddings instead of cloud APIs",
+            "rationale": "Enterprise-friendly, no external API calls required",
+            "options_considered": ["OpenAI ada-002", "Voyage-3", "Ollama all-minilm"],
             "topic": "embeddings",
             "session_id": session_ids[0],
             "status": "curated"

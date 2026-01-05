@@ -1,6 +1,21 @@
 name: ccmemory
 
 services:
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ccmemory-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    healthcheck:
+      test: ["CMD-SHELL", "ollama list || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+    restart: unless-stopped
+
   neo4j:
     image: neo4j:5.15-community
     container_name: ccmemory-neo4j
@@ -32,11 +47,14 @@ services:
     environment:
       - CCMEMORY_NEO4J_URI=bolt://neo4j:7687
       - CCMEMORY_NEO4J_PASSWORD=${CCMEMORY_NEO4J_PASSWORD:-ccmemory}
-      - VOYAGE_API_KEY=${VOYAGE_API_KEY}
+      - CCMEMORY_OLLAMA_URL=http://ollama:11434
+      - CCMEMORY_OLLAMA_MODEL=${CCMEMORY_OLLAMA_MODEL:-all-minilm}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - CCMEMORY_USER_ID=${CCMEMORY_USER_ID}
     depends_on:
       neo4j:
+        condition: service_healthy
+      ollama:
         condition: service_healthy
     restart: unless-stopped
 
@@ -45,3 +63,5 @@ volumes:
     name: ccmemory_data
   ccmemory_logs:
     name: ccmemory_logs
+  ollama_data:
+    name: ccmemory_ollama_data

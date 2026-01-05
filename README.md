@@ -37,7 +37,6 @@ Every AI conversation starts from zero. You explain your project, your preferenc
 # 1. Clone and start the containers
 git clone https://github.com/patrickkidd/ccmemory
 cd ccmemory
-export VOYAGE_API_KEY="your-voyage-api-key"
 docker compose up -d
 
 # 2. Install the Claude Code plugin

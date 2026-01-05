@@ -4,13 +4,20 @@
 
 set -e
 
+LOG_FILE="$HOME/.ccmemory/ensure-running.log"
+mkdir -p "$HOME/.ccmemory"
+
+log() {
+    echo "$(date '+%Y-%m-%d %H:%M:%S') $1" >> "$LOG_FILE"
+}
+
+log "=== ensure-running.sh started ==="
+
 CONFIG_DIR="$HOME/.ccmemory"
 CONFIG_FILE="$CONFIG_DIR/config.json"
-NETWORK_NAME="ccmemory-net"
+OLLAMA_CONTAINER="ccmemory-ollama"
 NEO4J_CONTAINER="ccmemory-neo4j"
 MCP_CONTAINER="ccmemory-mcp"
-NEO4J_IMAGE="neo4j:5.15-community"
-MCP_IMAGE="ghcr.io/patrickkidd/ccmemory:latest"
 
 check_docker() {
     if ! command -v docker &> /dev/null; then
@@ -25,55 +32,40 @@ check_docker() {
 
 load_config() {
     if [ -f "$CONFIG_FILE" ]; then
-        VOYAGE_API_KEY=$(grep -o '"voyage_api_key":"[^"]*"' "$CONFIG_FILE" 2>/dev/null | cut -d'"' -f4 || true)
         ANTHROPIC_API_KEY=$(grep -o '"anthropic_api_key":"[^"]*"' "$CONFIG_FILE" 2>/dev/null | cut -d'"' -f4 || true)
     fi
     # Fall back to environment
-    VOYAGE_API_KEY="${VOYAGE_API_KEY:-$VOYAGE_API_KEY}"
     ANTHROPIC_API_KEY="${ANTHROPIC_API_KEY:-$ANTHROPIC_API_KEY}"
 }
 
 prompt_keys() {
-    if [ -z "$VOYAGE_API_KEY" ] || [ -z "$ANTHROPIC_API_KEY" ]; then
+    log "prompt_keys: checking ANTHROPIC_API_KEY='${ANTHROPIC_API_KEY:0:5}...'"
+    if [ -z "$ANTHROPIC_API_KEY" ]; then
+        log "prompt_keys: missing key, prompting"
         echo ""
         echo "=== ccmemory First-Time Setup ==="
         echo ""
-        echo "API keys required for ccmemory. They will be stored in ~/.ccmemory/config.json"
+        echo "API key required for ccmemory. It will be stored in ~/.ccmemory/config.json"
         echo ""
-
-        if [ -z "$VOYAGE_API_KEY" ]; then
-            echo "VOYAGE_API_KEY not found."
-            echo "Get one at: https://dash.voyageai.com/api-keys"
-            echo ""
-            echo "Please set VOYAGE_API_KEY environment variable and retry."
-            exit 1
-        fi
-
-        if [ -z "$ANTHROPIC_API_KEY" ]; then
-            echo "ANTHROPIC_API_KEY not found."
-            echo "Get one at: https://console.anthropic.com/settings/keys"
-            echo ""
-            echo "Please set ANTHROPIC_API_KEY environment variable and retry."
-            exit 1
-        fi
+        echo "ANTHROPIC_API_KEY not found."
+        echo "Get one at: https://console.anthropic.com/settings/keys"
+        echo ""
+        echo "Please set ANTHROPIC_API_KEY environment variable and retry."
+        exit 1
     fi
 }
 
 save_config() {
+    log "save_config: creating $CONFIG_DIR"
     mkdir -p "$CONFIG_DIR"
+    log "save_config: writing $CONFIG_FILE"
     cat > "$CONFIG_FILE" << EOF
 {
-  "voyage_api_key": "$VOYAGE_API_KEY",
   "anthropic_api_key": "$ANTHROPIC_API_KEY"
 }
 EOF
     chmod 600 "$CONFIG_FILE"
-}
-
-ensure_network() {
-    if ! docker network inspect "$NETWORK_NAME" &> /dev/null; then
-        docker network create "$NETWORK_NAME" > /dev/null
-    fi
+    log "save_config: done"
 }
 
 is_container_running() {
@@ -83,64 +75,6 @@ is_container_running() {
 is_container_healthy() {
     status=$(docker inspect -f '{{.State.Health.Status}}' "$1" 2>/dev/null || echo "none")
     [ "$status" = "healthy" ]
-}
-
-start_neo4j() {
-    if is_container_running "$NEO4J_CONTAINER"; then
-        return 0
-    fi
-
-    # Remove stopped container if exists
-    docker rm -f "$NEO4J_CONTAINER" 2>/dev/null || true
-
-    docker run -d \
-        --name "$NEO4J_CONTAINER" \
-        --network "$NETWORK_NAME" \
-        -p 7474:7474 \
-        -p 7687:7687 \
-        -v ccmemory_data:/data \
-        -v ccmemory_logs:/logs \
-        -e NEO4J_AUTH=neo4j/ccmemory \
-        -e NEO4J_PLUGINS='["apoc"]' \
-        --health-cmd "wget -q --spider http://localhost:7474 || exit 1" \
-        --health-interval 5s \
-        --health-timeout 5s \
-        --health-retries 12 \
-        "$NEO4J_IMAGE" > /dev/null
-}
-
-start_mcp() {
-    if is_container_running "$MCP_CONTAINER"; then
-        return 0
-    fi
-
-    # Remove stopped container if exists
-    docker rm -f "$MCP_CONTAINER" 2>/dev/null || true
-
-    docker run -d \
-        --name "$MCP_CONTAINER" \
-        --network "$NETWORK_NAME" \
-        -p 8766:8766 \
-        -e CCMEMORY_NEO4J_URI=bolt://ccmemory-neo4j:7687 \
-        -e CCMEMORY_NEO4J_PASSWORD=ccmemory \
-        -e VOYAGE_API_KEY="$VOYAGE_API_KEY" \
-        -e ANTHROPIC_API_KEY="$ANTHROPIC_API_KEY" \
-        -e CCMEMORY_USER_ID="${CCMEMORY_USER_ID:-}" \
-        "$MCP_IMAGE" > /dev/null
-}
-
-wait_for_neo4j() {
-    local max_wait=60
-    local waited=0
-    while [ $waited -lt $max_wait ]; do
-        if is_container_healthy "$NEO4J_CONTAINER"; then
-            return 0
-        fi
-        sleep 1
-        waited=$((waited + 1))
-    done
-    echo "Neo4j failed to become healthy after ${max_wait}s"
-    exit 1
 }
 
 wait_for_mcp() {
@@ -158,30 +92,55 @@ wait_for_mcp() {
 }
 
 main() {
+    log "Checking if MCP is already responding..."
     # Quick check - if MCP is already responding, we're done
     if curl -s http://localhost:8766/health > /dev/null 2>&1; then
+        log "MCP already healthy, exiting"
         exit 0
     fi
 
+    log "MCP not responding, checking docker..."
     check_docker
+    log "Docker OK, loading config..."
     load_config
+    log "ANTHROPIC_API_KEY set: $([ -n \"$ANTHROPIC_API_KEY\" ] && echo 'yes' || echo 'no')"
     prompt_keys
+    log "prompt_keys passed"
     save_config
-    ensure_network
+    log "save_config done"
 
-    # Start Neo4j if needed
-    if ! is_container_running "$NEO4J_CONTAINER"; then
-        echo "Starting Neo4j..."
-        start_neo4j
-        wait_for_neo4j
+    # Find project root (where docker-compose.yml is)
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+
+    if [ ! -f "$PROJECT_ROOT/docker-compose.yml" ]; then
+        log "docker-compose.yml not found at $PROJECT_ROOT"
+        echo "Error: docker-compose.yml not found. Please run from ccmemory directory."
+        exit 1
     fi
 
-    # Start MCP if needed
-    if ! is_container_running "$MCP_CONTAINER"; then
-        echo "Starting ccmemory MCP server..."
-        start_mcp
-        wait_for_mcp
+    log "Starting containers via docker compose..."
+    echo "Starting ccmemory containers..."
+
+    # Export API key for docker compose
+    export ANTHROPIC_API_KEY
+
+    # Start all services
+    cd "$PROJECT_ROOT"
+    docker compose up -d 2>&1 | grep -v "^time=" || true
+
+    # Pull embedding model if not present
+    log "Ensuring embedding model is available..."
+    if ! docker exec "$OLLAMA_CONTAINER" ollama list 2>/dev/null | grep -q "all-minilm"; then
+        log "Pulling all-minilm model..."
+        echo "Pulling embedding model (first time only)..."
+        docker exec "$OLLAMA_CONTAINER" ollama pull all-minilm 2>&1 | tail -1
     fi
+
+    wait_for_mcp
+    log "MCP started"
+
+    log "=== ensure-running.sh completed ==="
 }
 
 main

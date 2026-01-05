@@ -1,0 +1,4 @@
+- Backfill from claude conversations
+- Logging / debug in development mode
+- Multiple projects on same MCP?
+- House neo4j in one MCP container?

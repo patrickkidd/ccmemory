@@ -7,16 +7,14 @@ from mcp.server.fastmcp import FastMCP
 
 from ..graph import getClient
 from ..embeddings import getEmbedding
+from ..reranker import rerank
 
 
 def registerQueryTools(mcp: FastMCP):
     """Register all query tools with the MCP server."""
 
     @mcp.tool()
-    async def queryContext(
-        limit: int = 20,
-        include_team: bool = True
-    ) -> dict:
+    async def queryContext(limit: int = 20, include_team: bool = True) -> dict:
         """Get recent context for the current project.
 
         Args:
@@ -31,20 +29,18 @@ def registerQueryTools(mcp: FastMCP):
         for item in results:
             node = item.get("n", {})
             rel_type = item.get("rel_type", "")
-            formatted.append({
-                "type": rel_type,
-                "data": dict(node),
-                "session_time": str(item.get("session_time", ""))
-            })
+            formatted.append(
+                {
+                    "type": rel_type,
+                    "data": dict(node),
+                    "session_time": str(item.get("session_time", "")),
+                }
+            )
 
         return {"project": project, "context": formatted}
 
     @mcp.tool()
-    async def searchPrecedent(
-        query: str,
-        limit: int = 10,
-        include_team: bool = True
-    ) -> dict:
+    async def searchPrecedent(query: str, limit: int = 10, include_team: bool = True) -> dict:
         """Full-text search across all context types.
 
         Args:
@@ -59,38 +55,45 @@ def registerQueryTools(mcp: FastMCP):
         return {"project": project, "query": query, "results": results}
 
     @mcp.tool()
-    async def searchSemantic(
-        query: str,
-        limit: int = 10,
-        include_team: bool = True
-    ) -> dict:
+    async def searchSemantic(query: str, limit: int = 10, include_team: bool = True) -> dict:
         """Semantic similarity search across decisions, corrections, and insights.
+
+        Uses local embeddings for candidate retrieval, then Claude for reranking.
 
         Args:
             query: Natural language query
-            limit: Maximum results per category
+            limit: Maximum results to return
             include_team: Whether to include curated team decisions
         """
         client = getClient()
         project = os.path.basename(os.getcwd())
 
         embedding = getEmbedding(query)
-        results = client.searchSemantic(embedding, project, limit=limit, include_team=include_team)
+        raw_limit = min(limit * 2, 20)
+        results = client.searchSemantic(
+            embedding, project, limit=raw_limit, include_team=include_team
+        )
+
+        candidates = []
+        for category, items in results.items():
+            for item in items:
+                candidates.append({"data": item[0], "score": item[1], "category": category})
+
+        candidates.sort(key=lambda x: x["score"], reverse=True)
+
+        reranked = await rerank(query, candidates, limit=limit)
 
         formatted = {}
-        for category, items in results.items():
-            formatted[category] = [
-                {"data": item[0], "score": item[1]}
-                for item in items
-            ]
+        for item in reranked:
+            cat = item.get("category", "unknown")
+            if cat not in formatted:
+                formatted[cat] = []
+            formatted[cat].append({"data": item["data"], "score": item["score"]})
 
         return {"project": project, "query": query, "results": formatted}
 
     @mcp.tool()
-    async def queryByTopic(
-        topic: str,
-        limit: int = 20
-    ) -> dict:
+    async def queryByTopic(topic: str, limit: int = 20) -> dict:
         """Get all context related to a specific topic.
 
         Args:
@@ -113,13 +116,11 @@ def registerQueryTools(mcp: FastMCP):
             "semantic_matches": {
                 category: [{"data": item[0], "score": item[1]} for item in items]
                 for category, items in semantic_results.items()
-            }
+            },
         }
 
     @mcp.tool()
-    async def traceDecision(
-        decision_id: str
-    ) -> dict:
+    async def traceDecision(decision_id: str) -> dict:
         """Trace the full context around a decision.
 
         Args:
@@ -144,7 +145,7 @@ def registerQueryTools(mcp: FastMCP):
                        collect(DISTINCT c) as corrections,
                        collect(DISTINCT e) as exceptions
                 """,
-                decision_id=decision_id
+                decision_id=decision_id,
             )
             record = result.single()
 
@@ -162,9 +163,7 @@ def registerQueryTools(mcp: FastMCP):
             }
 
     @mcp.tool()
-    async def queryStaleDecisions(
-        days: int = 30
-    ) -> dict:
+    async def queryStaleDecisions(days: int = 30) -> dict:
         """Find developmental decisions that may need review.
 
         Args:
@@ -174,16 +173,10 @@ def registerQueryTools(mcp: FastMCP):
         project = os.path.basename(os.getcwd())
         results = client.queryStaleDecisions(project, days=days)
 
-        return {
-            "project": project,
-            "threshold_days": days,
-            "stale_decisions": results
-        }
+        return {"project": project, "threshold_days": days, "stale_decisions": results}
 
     @mcp.tool()
-    async def queryFailedApproaches(
-        limit: int = 10
-    ) -> dict:
+    async def queryFailedApproaches(limit: int = 10) -> dict:
         """Get recent failed approaches to avoid repeating mistakes.
 
         Args:
@@ -193,15 +186,10 @@ def registerQueryTools(mcp: FastMCP):
         project = os.path.basename(os.getcwd())
         results = client.queryFailedApproaches(project, limit=limit)
 
-        return {
-            "project": project,
-            "failed_approaches": results
-        }
+        return {"project": project, "failed_approaches": results}
 
     @mcp.tool()
-    async def promoteDecisions(
-        branch: Optional[str] = None
-    ) -> dict:
+    async def promoteDecisions(branch: Optional[str] = None) -> dict:
         """Promote developmental decisions to curated status.
 
         Args:
@@ -211,11 +199,7 @@ def registerQueryTools(mcp: FastMCP):
         project = os.path.basename(os.getcwd())
         client.promoteDecisions(project, branch=branch)
 
-        return {
-            "project": project,
-            "branch": branch,
-            "status": "promoted"
-        }
+        return {"project": project, "branch": branch, "status": "promoted"}
 
     @mcp.tool()
     async def getMetrics() -> dict:
