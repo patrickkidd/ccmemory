@@ -1,9 +1,8 @@
-"""Neo4j client for ccmemory."""
-
 import os
 import uuid
 import json
 import logging
+from pathlib import Path
 from typing import Optional
 from neo4j import GraphDatabase
 
@@ -12,12 +11,32 @@ logging.getLogger("neo4j.notifications").setLevel(logging.ERROR)
 
 
 class GraphClient:
-    def __init__(self):
+    def __init__(self, init_schema: bool = False):
         uri = os.getenv("CCMEMORY_NEO4J_URI", "bolt://localhost:7687")
         user = os.getenv("CCMEMORY_NEO4J_USER", "neo4j")
         password = os.getenv("CCMEMORY_NEO4J_PASSWORD", "ccmemory")
         self.driver = GraphDatabase.driver(uri, auth=(user, password))
         self.user_id = os.getenv("CCMEMORY_USER_ID")
+        if init_schema:
+            self.init_schema()
+
+    def init_schema(self):
+        """Initialize Neo4j schema from init.cypher."""
+        cypher_paths = [
+            Path("/app/init.cypher"),
+            Path(__file__).parent.parent.parent / "init.cypher",
+        ]
+        for path in cypher_paths:
+            if path.exists():
+                cypher = path.read_text()
+                for stmt in cypher.split(";"):
+                    stmt = stmt.strip()
+                    if stmt and not stmt.startswith("//"):
+                        with self.driver.session() as session:
+                            session.run(stmt)
+                logging.info("Schema initialized from %s", path)
+                return
+        logging.warning("init.cypher not found")
 
     def close(self):
         self.driver.close()

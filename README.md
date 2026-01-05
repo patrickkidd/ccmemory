@@ -2,13 +2,6 @@
 
 **Persistent memory for Claude Code. The longer you use it, the smarter it gets.**
 
-
-In-Depth:
-
-- [doc/PROJECT_VISION.md](doc/PROJECT_VISION.md) for the full conceptual architecture (multi-domain, active research, hypothesis generation).
-- [doc/TELEMETRY.md](doc/TELEMETRY.md) for the full enterprise metrics framework.
-- This project builds on ideas from [AI's trillion-dollar opportunity: Context graphs](https://foundationcapital.com/ais-trillion-dollar-opportunity-context-graphs/) by Gupta & Garg at Foundation Capital — the insight that AI tools fragment organizational knowledge across sessions, and that capturing decision traces (not just state) is where the real value lies.
-
 ---
 
 ## The Problem
@@ -17,213 +10,41 @@ Every AI conversation starts from zero. You explain your project, your preferenc
 
 **ccmemory fixes this.** Decisions, corrections, and context accumulate over time. Session 50 is dramatically more effective than session 1.
 
-```
-Without memory:  Your input × 1.0 = Output  (always a stranger)
-With ccmemory:   Your input × 3.0 = Output  (deep context, fewer mistakes)
-```
-
----
-
-## What It Does
-
-Every Claude Code session generates valuable context that's lost when the session ends:
-- Architectural decisions and their rationale
-- Corrections to Claude's understanding
-- Exceptions granted ("in this case, skip the test")
-- Failed approaches and why they didn't work
-
-**ccmemory captures this automatically**, then surfaces relevant precedent in future sessions.
-
-### Before ccmemory
-```
-Session 1: "We use F1 scoring because precision matters more than recall here"
-Session 2: "Why do we use F1 scoring?" → Re-explain from scratch
-Session 3: "What's our scoring approach?" → Re-explain again
-```
-
-### After ccmemory
-```
-Session 1: "We use F1 scoring because precision matters more than recall here"
-           → [Captured: Decision with rationale]
-Session 2: "Why do we use F1 scoring?"
-           → [Context injected: "Decision from Jan 3: F1 scoring chosen
-              because precision > recall for this use case"]
-```
-
-### Not Just Another RAG Tool
-
-| Capability | Copilot Work / Enterprise Search | ccmemory |
-|------------|----------------------------------|----------|
-| **Searches** | Existing docs and files | Decisions, corrections, reasoning |
-| **Content created** | Before you search | During AI conversations |
-| **Learning** | Static | Improves over time |
-| **Preserves** | Information ("what") | Reasoning ("why") |
-
-Enterprise search finds documents. ccmemory remembers why you made decisions.
-
----
-
-## The Dashboard
-
-```bash
-ccmemory dashboard
-```
-
-**For individuals**: A workspace for problem-solving.
-
-- **Relevant history** — Past decisions that apply to your current work
-- **Open questions** — Unresolved issues Claude flagged
-- **What didn't work** — Failed approaches to avoid repeating
-- **AI suggestions** — Patterns, hypotheses, and strategic considerations surfaced from your accumulated context
-
-**For managers**: Team intelligence and business impact.
-
-- **Cognitive coefficient** — Is the team's AI effectiveness improving over time?
-- **Knowledge retention** — What happens when someone leaves?
-- **Onboarding speed** — How fast do new hires reach productivity?
-- **Loop efficiency** — How many iterations per human checkpoint?
-
----
-
-## Enterprise Telemetry
-
-The cognitive coefficient must correlate with real KPIs:
-
-| ccmemory Metric | Business KPI | Correlation |
-|-----------------|--------------|-------------|
-| Re-explanation rate ↓ | Cycle time ↓ | Less context switching |
-| Decision reuse ↑ | Defect rate ↓ | Fewer repeated mistakes |
-| Correction velocity ↓ | Velocity ↑ | Faster course correction |
-| Knowledge preservation ↑ | Onboarding time ↓ | Institutional memory persists |
-| Loop efficiency ↑ | Developer leverage ↑ | More done per human checkpoint |
-
-### For the C-Suite
-
-```bash
-ccmemory report --format=executive --period=quarterly
-```
-
-Generates measurable ROI:
-- **Hours saved** from reduced re-explanation
-- **Decisions preserved** vs. tribal knowledge lost
-- **Onboarding acceleration** — new hires reach productivity faster
-- **Cognitive coefficient trend** — is AI effectiveness compounding?
-
-See [doc/TELEMETRY.md](doc/TELEMETRY.md) for the full enterprise metrics framework.
-
----
-
-## How It Works
-
-```
-┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-│   Claude Code   │────▶│    ccmemory     │────▶│     Neo4j       │
-│   (IDE/CLI)     │     │   (MCP Server)  │     │  (Graph Store)  │
-└─────────────────┘     └─────────────────┘     └─────────────────┘
-        │                       │                       │
-        │ Hooks capture         │ Detects decisions,    │ Stores with
-        │ conversation          │ corrections,          │ relationships
-        │                       │ exceptions            │
-        ▼                       ▼                       ▼
-   Session Start ──────▶ Query relevant ──────▶ Inject context
-                         precedent              into Claude
-```
-
-### What Gets Captured
-
-| Type | Example | Value |
-|------|---------|-------|
-| **Decision** | "Let's use retry with fixed delays, not exponential backoff" | Future sessions know why |
-| **Correction** | "Actually, that endpoint returns JSON, not XML" | Claude doesn't repeat mistake |
-| **Exception** | "Skip the linter for this file, it's generated code" | Rule-breaking is justified |
-| **Failed Approach** | "Tried async but race conditions killed it" | Don't repeat failed experiments |
-| **Q&A** | "What's the timeout?" → "30 seconds" | Constraints are remembered |
-
----
-
-## Architecture
-
-**Individual Mode**: One Neo4j container per machine, projects isolated by property.
-
-**Team Mode**: Shared Neo4j server, developers identified by `CCMEMORY_USER_ID`.
-- `developmental` decisions: Only visible to creator
-- `curated` decisions: Visible to all team members (promoted via git hooks)
-
-### Scope
-
-**Phase 1 (Current)**: Software development focus — decisions, corrections, and context for Claude Code sessions. This is the MVP that ships.
-
-**Future Phases**: The architecture generalizes to any domain requiring accumulated understanding: career consulting, medical research, relationship systems, strategic planning. See the Vision doc for the full picture.
-
-See [doc/PROJECT_VISION.md](doc/PROJECT_VISION.md) for the full conceptual architecture (multi-domain, active research, hypothesis generation).
-See [doc/IMPLEMENTATION_PLAN.md](doc/IMPLEMENTATION_PLAN.md) for Phase 1 build specifications.
-
----
-
-## Requirements
-
-- Docker (for Neo4j)
-- Python 3.10+
-- [uv](https://docs.astral.sh/uv/) (Python package manager)
-- Claude Code CLI
-
-
-
 ---
 
 ## Getting Started
 
-### 1. Install
+### Requirements
+
+- Docker
+- Claude Code CLI
+
+### Install
 
 ```bash
+# 1. Clone and start the containers
 git clone https://github.com/patrickkidd/ccmemory
-cd ccmemory && python3 scripts/install.py
+cd ccmemory
+export VOYAGE_API_KEY="your-voyage-api-key"
+docker compose up -d
+
+# 2. Install the Claude Code plugin
+/plugin marketplace add patrickkidd/ccmemory
+/plugin install ccmemory@patrickkidd/ccmemory
 ```
 
-This starts Neo4j, installs the CLI, and configures Claude Code hooks.
+That's it. Start a new Claude Code session and ccmemory is active.
 
-### 2. See It Work
+### Verify It Works
 
-Start a Claude Code session in any project:
-
-```bash
-cd ~/your-project && claude
-```
-
-Have a normal conversation. When you make a decision, correction, or exception, ccmemory captures it automatically:
+Have a conversation with a decision:
 
 ```
-You: "Let's use Postgres instead of SQLite — we need proper concurrent writes"
+You: "Let's use Postgres instead of SQLite — we need concurrent writes"
 Claude: [implements the change]
-→ ccmemory detects: Decision (confidence: 0.92)
-→ Stored: "Use Postgres for concurrent write support"
 ```
 
-### 3. Verify It's Working
-
-Check what's been captured:
-
-```bash
-ccmemory search "postgres"
-ccmemory stats
-```
-
-Or open the dashboard:
-
-```bash
-ccmemory dashboard
-# → http://localhost:8765
-```
-
-### 4. See Context Return
-
-Start a new session (or `/clear` your current one):
-
-```bash
-claude
-```
-
-At session start, ccmemory injects relevant context:
+ccmemory automatically detects and stores the decision. Start a new session and it resurfaces:
 
 ```
 # Context Graph: your-project
@@ -231,49 +52,68 @@ At session start, ccmemory injects relevant context:
 - Use Postgres for concurrent write support (Jan 4)
 ```
 
-Now Claude knows your decisions without re-explanation.
+---
 
-### Team Mode
+## What Gets Captured
 
-For shared memory across a team:
+| Type | Example | Value |
+|------|---------|-------|
+| **Decision** | "Let's use retry with fixed delays" | Future sessions know why |
+| **Correction** | "Actually, that endpoint returns JSON, not XML" | Claude doesn't repeat mistake |
+| **Exception** | "Skip the linter for this file, it's generated" | Rule-breaking is justified |
+| **Failed Approach** | "Tried async but race conditions killed it" | Don't repeat failed experiments |
+
+---
+
+## Team Mode
+
+For shared memory across a team, point everyone at the same Neo4j:
 
 ```bash
-# 1. Deploy shared Neo4j (ops team, one-time)
-docker run -d --name ccmemory-team \
-  -p 7474:7474 -p 7687:7687 \
-  -e NEO4J_AUTH=neo4j/your-team-password \
-  -v ccmemory_team_data:/data \
-  neo4j:5-community
-
-# 2. Each developer adds to ~/.bashrc or ~/.zshrc
+# Each developer adds to ~/.bashrc or ~/.zshrc
 export CCMEMORY_USER_ID="$(git config user.email)"
 export CCMEMORY_NEO4J_URI="bolt://your-team-server:7687"
 export CCMEMORY_NEO4J_PASSWORD="your-team-password"
 ```
 
-Decisions start as `developmental` (private). Promote to `curated` (team-visible) via:
+Decisions start as `developmental` (private). Promote to `curated` (team-visible) via the dashboard.
 
-```bash
-ccmemory promote --branch main
+---
+
+## Architecture
+
+```
+┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
+│   Claude Code   │────▶│  MCP Server     │────▶│     Neo4j       │
+│                 │     │  (container)    │     │   (container)   │
+└─────────────────┘     └─────────────────┘     └─────────────────┘
+        │                       │
+        │ Hooks detect          │ Stores decisions,
+        │ decisions/corrections │ corrections, insights
 ```
 
-### CLI Reference
+Both Neo4j and the MCP server run in Docker containers. The Claude Code plugin connects to the MCP server via HTTP.
+
+---
+
+## Commands
 
 ```bash
-ccmemory status              # Check Neo4j connection
-ccmemory stats               # Project metrics
-ccmemory search "<query>"    # Find decisions/corrections/etc
-ccmemory stale --days 30     # Decisions needing review
-ccmemory dashboard           # Web UI
-ccmemory cache <url>         # Cache reference docs
+docker compose up -d      # Start
+docker compose down       # Stop
+docker compose logs -f    # View logs
 ```
 
-### Stop/Start Neo4j
+---
 
-```bash
-docker-compose down   # stop
-docker-compose up -d  # start
-```
+## In-Depth
+
+- [doc/DEVELOPMENT.md](doc/DEVELOPMENT.md) — Development setup
+- [doc/PROJECT_VISION.md](doc/PROJECT_VISION.md) — Full conceptual architecture
+- [doc/TELEMETRY.md](doc/TELEMETRY.md) — Enterprise metrics framework
+- [doc/IMPLEMENTATION_PLAN.md](doc/IMPLEMENTATION_PLAN.md) — Phase 1 build specs
+
+Inspired by [AI's trillion-dollar opportunity: Context graphs](https://foundationcapital.com/ais-trillion-dollar-opportunity-context-graphs/) by Gupta & Garg.
 
 ---
 

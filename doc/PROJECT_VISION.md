@@ -380,49 +380,49 @@ The system separates **your specifics** (high-confidence, lived experience) from
 
 ```
 ┌────────────────────────────────────────────────────────────────────────┐
-│                         DOMAIN 1: Your Specifics                        │
-│                      (High confidence, event-sourced)                   │
+│                         DOMAIN 1: Your Specifics                       │
+│                      (High confidence, event-sourced)                  │
 ├────────────────────────────────────────────────────────────────────────┤
-│                                                                         │
-│  Sources:                                                               │
+│                                                                        │
+│  Sources:                                                              │
 │  - Live conversation capture (Claude Code, Desktop, any MCP client)    │
 │  - Your apps (relationship tracker, time tracker, health apps)         │
 │  - Conversation exports (ChatGPT, Grok, Claude history)                │
 │  - Personal data (Fitbit, calendars, financial exports)                │
-│                                                                         │
-│  Captures:                                                              │
+│                                                                        │
+│  Captures:                                                             │
 │  - Decisions (with options, reasoning, revisit triggers)               │
 │  - Corrections (updated beliefs — highest value)                       │
 │  - Exceptions (rules that don't apply to you)                          │
 │  - Observations (symptoms, events, patterns, data points)              │
 │  - Relationships (people, projects, concepts that connect)             │
-│                                                                         │
+│                                                                        │
 │  Confidence: HIGH — you said it, you lived it, you observed it         │
-│                                                                         │
+│                                                                        │
 └────────────────────────────────────────────────────────────────────────┘
                                     │
                                     │ bridges (proposed → validated)
                                     ▼
 ┌────────────────────────────────────────────────────────────────────────┐
-│                      DOMAIN 2: Reference Knowledge                      │
-│                    (Curated, but not personalized)                      │
+│                      DOMAIN 2: Reference Knowledge                     │
+│                    (Curated, but not personalized)                     │
 ├────────────────────────────────────────────────────────────────────────┤
-│                                                                         │
-│  Sources:                                                               │
+│                                                                        │
+│  Sources:                                                              │
 │  - Imported documents (PDFs, strategy docs, articles)                  │
 │  - Model training knowledge (invoked on demand)                        │
 │  - Active web search (when gaps identified)                            │
 │  - Project-specific references (codebase docs, APIs, specs)            │
-│                                                                         │
-│  Captures:                                                              │
+│                                                                        │
+│  Captures:                                                             │
 │  - Concepts (definitions, relationships between ideas)                 │
 │  - Claims (with sources and confidence levels)                         │
 │  - Frameworks (Bowen theory, design patterns, market models)           │
 │  - Knowledge gaps (what we don't know yet — explicit nodes)            │
 │  - Hypotheses (proposed connections, testable predictions)             │
-│                                                                         │
+│                                                                        │
 │  Confidence: MEDIUM — literature says, needs testing against Domain 1  │
-│                                                                         │
+│                                                                        │
 └────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -614,9 +614,9 @@ Does this match your experience? [Yes/No/Unsure]"
 This transforms the system from **storage** to **research partner**:
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
+┌──────────────────────────────────────────────────────────────────┐
 │                     Research Partner Agent                       │
-├─────────────────────────────────────────────────────────────────┤
+├──────────────────────────────────────────────────────────────────┤
 │                                                                  │
 │  Behaviors:                                                      │
 │                                                                  │
@@ -642,7 +642,7 @@ This transforms the system from **storage** to **research partner**:
 │  7. CORRECT - Update beliefs when wrong                          │
 │     "Previous hypothesis about caffeine was wrong. Updating."    │
 │                                                                  │
-└─────────────────────────────────────────────────────────────────┘
+└──────────────────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -1074,7 +1074,7 @@ interface QueryPatternsResult {
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│                         User Interfaces                              │
+│                         User Interfaces                             │
 ├─────────────┬─────────────┬─────────────┬─────────────┬─────────────┤
 │ Claude Code │   Claude    │  Custom     │  Your Apps  │  Import     │
 │   (IDE)     │   Desktop   │  MCP Client │  (Timeline) │  Scripts    │

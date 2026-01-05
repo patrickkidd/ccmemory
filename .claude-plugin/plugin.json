@@ -11,15 +11,8 @@
   "skills": "./skills/",
   "mcpServers": {
     "ccmemory": {
-      "command": "python",
-      "args": ["-m", "ccmemory.server"],
-      "cwd": "${CLAUDE_PLUGIN_ROOT}/mcp-server/src",
-      "env": {
-        "VOYAGE_API_KEY": "${VOYAGE_API_KEY}",
-        "CCMEMORY_NEO4J_URI": "${CCMEMORY_NEO4J_URI:-bolt://localhost:7687}",
-        "CCMEMORY_NEO4J_PASSWORD": "${CCMEMORY_NEO4J_PASSWORD:-ccmemory}",
-        "CCMEMORY_USER_ID": "${CCMEMORY_USER_ID}"
-      }
+      "type": "sse",
+      "url": "http://localhost:8766/sse"
     }
   }
 }
