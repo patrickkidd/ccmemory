@@ -2,6 +2,13 @@
 
 **Persistent memory for Claude Code. The longer you use it, the smarter it gets.**
 
+
+In-Depth:
+
+- [doc/PROJECT_VISION.md](doc/PROJECT_VISION.md) for the full conceptual architecture (multi-domain, active research, hypothesis generation).
+- [doc/TELEMETRY.md](doc/TELEMETRY.md) for the full enterprise metrics framework.
+- This project builds on ideas from [AI's trillion-dollar opportunity: Context graphs](https://foundationcapital.com/ais-trillion-dollar-opportunity-context-graphs/) by Gupta & Garg at Foundation Capital — the insight that AI tools fragment organizational knowledge across sessions, and that capturing decision traces (not just state) is where the real value lies.
+
 ---
 
 ## The Problem
@@ -13,61 +20,6 @@ Every AI conversation starts from zero. You explain your project, your preferenc
 ```
 Without memory:  Your input × 1.0 = Output  (always a stranger)
 With ccmemory:   Your input × 3.0 = Output  (deep context, fewer mistakes)
-```
-
-### Not Just Another RAG Tool
-
-| Capability | Copilot Work / Enterprise Search | ccmemory |
-|------------|----------------------------------|----------|
-| **Searches** | Existing docs and files | Decisions, corrections, reasoning |
-| **Content created** | Before you search | During AI conversations |
-| **Learning** | Static | Improves over time |
-| **Preserves** | Information ("what") | Reasoning ("why") |
-
-Enterprise search finds documents. ccmemory remembers why you made decisions.
-
----
-
-## TLDR: 2-Minute Setup
-
-### Individual Mode (Single Developer)
-
-```bash
-# 1. Clone and install
-git clone https://github.com/patrickkidd/ccmemory
-cd ccmemory && ./scripts/install.sh
-
-# 2. Start the memory layer
-ccmemory start
-
-# 3. Open any Claude Code project — memory is now active
-cd ~/your-project && claude
-```
-
-That's it. Decisions, corrections, and exceptions are captured automatically. They surface in future sessions.
-
-### Team Mode (Shared Memory)
-
-```bash
-# 1. Deploy Neo4j (one-time, ops team)
-docker run -d \
-  --name ccmemory-team \
-  -p 7474:7474 -p 7687:7687 \
-  -e NEO4J_AUTH=neo4j/your-team-password \
-  -v ccmemory_team_data:/data \
-  neo4j:5-community
-
-# 2. Each developer
-git clone https://github.com/patrickkidd/ccmemory
-cd ccmemory && ./scripts/install.sh
-
-# 3. Configure team connection (~/.bashrc or ~/.zshrc)
-export CCMEMORY_USER_ID="$(git config user.email)"
-export CCMEMORY_NEO4J_URI="bolt://your-team-server:7687"
-export CCMEMORY_NEO4J_PASSWORD="your-team-password"
-
-# 4. Work normally — curated decisions visible to team
-cd ~/your-project && claude
 ```
 
 ---
@@ -98,15 +50,26 @@ Session 2: "Why do we use F1 scoring?"
               because precision > recall for this use case"]
 ```
 
+### Not Just Another RAG Tool
+
+| Capability | Copilot Work / Enterprise Search | ccmemory |
+|------------|----------------------------------|----------|
+| **Searches** | Existing docs and files | Decisions, corrections, reasoning |
+| **Content created** | Before you search | During AI conversations |
+| **Learning** | Static | Improves over time |
+| **Preserves** | Information ("what") | Reasoning ("why") |
+
+Enterprise search finds documents. ccmemory remembers why you made decisions.
+
 ---
 
-## The Dashboard: A Thinking Surface
+## The Dashboard
 
 ```bash
 ccmemory dashboard
 ```
 
-**For individuals**: A workspace for problem-solving, not vanity metrics.
+**For individuals**: A workspace for problem-solving.
 
 - **Relevant history** — Past decisions that apply to your current work
 - **Open questions** — Unresolved issues Claude flagged
@@ -201,13 +164,116 @@ See [doc/IMPLEMENTATION_PLAN.md](doc/IMPLEMENTATION_PLAN.md) for Phase 1 build s
 
 - Docker (for Neo4j)
 - Python 3.10+
+- [uv](https://docs.astral.sh/uv/) (Python package manager)
 - Claude Code CLI
+
+
 
 ---
 
-## Inspiration
+## Getting Started
 
-This project builds on ideas from [AI's trillion-dollar opportunity: Context graphs](https://foundationcapital.com/ais-trillion-dollar-opportunity-context-graphs/) by Gupta & Garg at Foundation Capital — the insight that AI tools fragment organizational knowledge across sessions, and that capturing decision traces (not just state) is where the real value lies.
+### 1. Install
+
+```bash
+git clone https://github.com/patrickkidd/ccmemory
+cd ccmemory && python3 scripts/install.py
+```
+
+This starts Neo4j, installs the CLI, and configures Claude Code hooks.
+
+### 2. See It Work
+
+Start a Claude Code session in any project:
+
+```bash
+cd ~/your-project && claude
+```
+
+Have a normal conversation. When you make a decision, correction, or exception, ccmemory captures it automatically:
+
+```
+You: "Let's use Postgres instead of SQLite — we need proper concurrent writes"
+Claude: [implements the change]
+→ ccmemory detects: Decision (confidence: 0.92)
+→ Stored: "Use Postgres for concurrent write support"
+```
+
+### 3. Verify It's Working
+
+Check what's been captured:
+
+```bash
+ccmemory search "postgres"
+ccmemory stats
+```
+
+Or open the dashboard:
+
+```bash
+ccmemory dashboard
+# → http://localhost:8765
+```
+
+### 4. See Context Return
+
+Start a new session (or `/clear` your current one):
+
+```bash
+claude
+```
+
+At session start, ccmemory injects relevant context:
+
+```
+# Context Graph: your-project
+## Recent Decisions
+- Use Postgres for concurrent write support (Jan 4)
+```
+
+Now Claude knows your decisions without re-explanation.
+
+### Team Mode
+
+For shared memory across a team:
+
+```bash
+# 1. Deploy shared Neo4j (ops team, one-time)
+docker run -d --name ccmemory-team \
+  -p 7474:7474 -p 7687:7687 \
+  -e NEO4J_AUTH=neo4j/your-team-password \
+  -v ccmemory_team_data:/data \
+  neo4j:5-community
+
+# 2. Each developer adds to ~/.bashrc or ~/.zshrc
+export CCMEMORY_USER_ID="$(git config user.email)"
+export CCMEMORY_NEO4J_URI="bolt://your-team-server:7687"
+export CCMEMORY_NEO4J_PASSWORD="your-team-password"
+```
+
+Decisions start as `developmental` (private). Promote to `curated` (team-visible) via:
+
+```bash
+ccmemory promote --branch main
+```
+
+### CLI Reference
+
+```bash
+ccmemory status              # Check Neo4j connection
+ccmemory stats               # Project metrics
+ccmemory search "<query>"    # Find decisions/corrections/etc
+ccmemory stale --days 30     # Decisions needing review
+ccmemory dashboard           # Web UI
+ccmemory cache <url>         # Cache reference docs
+```
+
+### Stop/Start Neo4j
+
+```bash
+docker-compose down   # stop
+docker-compose up -d  # start
+```
 
 ---
 

@@ -825,9 +825,8 @@ CREATE FULLTEXT INDEX correction_search IF NOT EXISTS
 ccmemory/
 ├── .claude-plugin/
 │   └── manifest.json
-├── docker/
-│   ├── docker-compose.yml
-│   └── init.cypher
+├── docker-compose.yml
+├── init.cypher
 ├── mcp-server/
 │   ├── pyproject.toml
 │   └── src/

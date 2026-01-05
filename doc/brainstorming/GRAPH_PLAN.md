@@ -587,13 +587,8 @@ context:
 ccmemory/
 ├── .claude-plugin/
 │   └── manifest.json
-├── docker/
-│   ├── docker-compose.yml
-│   └── neo4j/
-│       ├── conf/
-│       │   └── neo4j.conf
-│       └── init/
-│           └── constraints.cypher
+├── docker-compose.yml
+├── init.cypher
 ├── mcp-server/
 │   ├── pyproject.toml
 │   ├── src/

@@ -211,9 +211,8 @@ Reference knowledge lives in a **project-local** markdown tree at project root (
 ccmemory/
 ├── .claude-plugin/
 │   └── plugin.json              # Plugin manifest
-├── docker/
-│   ├── docker-compose.yml       # Neo4j container
-│   └── init.cypher              # Schema initialization
+├── docker-compose.yml           # Neo4j container
+├── init.cypher                  # Schema initialization
 ├── mcp-server/
 │   ├── pyproject.toml           # Python package config
 │   └── src/
@@ -307,7 +306,7 @@ Note: `post_install` is not part of the Claude Code plugin spec. Use the README 
 
 ### 2. Docker Compose
 
-**File:** `docker/docker-compose.yml`
+**File:** `docker-compose.yml`
 
 ```yaml
 version: '3.8'
@@ -343,7 +342,7 @@ volumes:
 
 ### 3. Schema Initialization
 
-**File:** `docker/init.cypher`
+**File:** `init.cypher`
 
 ```cypher
 // === DOMAIN 1: Your Specifics ===

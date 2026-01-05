@@ -7,7 +7,8 @@ Context graph for persistent memory across Claude Code sessions.
 ```
 ccmemory/
 ├── .claude-plugin/plugin.json    # Plugin manifest
-├── docker/                       # Neo4j container config
+├── docker-compose.yml            # Neo4j container config
+├── init.cypher                   # Neo4j schema init
 ├── mcp-server/src/ccmemory/     # MCP server + CLI
 │   ├── server.py                # MCP entry point
 │   ├── graph.py                 # Neo4j client
@@ -25,10 +26,10 @@ ccmemory/
 
 ```bash
 # Start Neo4j
-cd docker && docker-compose up -d
+docker-compose up -d
 
 # Install package in dev mode
-cd mcp-server && pip install -e ".[dev]"
+cd mcp-server && uv pip install -e ".[dev]"
 
 # Run tests
 pytest tests/ -v
