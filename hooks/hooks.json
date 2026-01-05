@@ -1,11 +1,23 @@
 {
   "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "ccmemory_*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/ensure-running.sh",
+            "timeout": 90
+          }
+        ]
+      }
+    ],
     "SessionStart": [
       {
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/session_start.py",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/session_start.sh",
             "timeout": 10
           }
         ]
@@ -16,7 +28,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/message_response.py",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/message_response.sh",
             "timeout": 15
           }
         ]
@@ -27,7 +39,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/session_end.py",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/session_end.sh",
             "timeout": 10
           }
         ]

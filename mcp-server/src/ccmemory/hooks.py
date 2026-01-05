@@ -1,45 +1,71 @@
-#!/usr/bin/env python3
-"""Stop hook - detect and capture context after Claude finishes responding.
-
-The Stop hook fires after every Claude response (not just tool calls), making it
-ideal for detecting decisions, corrections, and insights from user messages.
-
-Claude Code provides via stdin for Stop:
-{
-  "session_id": "abc123",
-  "transcript_path": "/path/to/transcript.jsonl",
-  "cwd": "/current/working/dir",
-  "hook_event_name": "Stop"
-}
-
-We read the transcript file to get the full conversation context for detection.
-"""
-
 import json
-import os
-import sys
 import uuid
 import asyncio
+from datetime import datetime
+from typing import Optional
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'mcp-server', 'src'))
+from .graph import getClient
+from .detection.detector import detectAll
+from .embeddings import getEmbedding
 
-from ccmemory.graph import getClient
-from ccmemory.detection.detector import detectAll
-from ccmemory.embeddings import getEmbedding
+
+def handleSessionStart(session_id: str, cwd: str) -> dict:
+    project = cwd.rsplit("/", 1)[-1] if "/" in cwd else cwd
+    client = getClient()
+
+    client.createSession(
+        session_id=session_id, project=project, started_at=datetime.now().isoformat()
+    )
+
+    recent = client.queryRecent(project, limit=15)
+    stale = client.queryStaleDecisions(project, days=30)
+    failed = client.queryFailedApproaches(project, limit=5)
+
+    context_parts = [f"# Context Graph: {project}", f"Session: {session_id[:12]}...", ""]
+
+    if recent:
+        context_parts.append("## Recent Context")
+        for item in recent[:10]:
+            node = item.get("n", {})
+            if not node:
+                continue
+            if "description" in node:
+                context_parts.append(f"- Decision: {str(node['description'])[:100]}")
+            elif "wrong_belief" in node:
+                context_parts.append(f"- Correction: {str(node['right_belief'])[:100]}")
+            elif "summary" in node:
+                context_parts.append(f"- Insight: {str(node['summary'])[:100]}")
+
+    if stale:
+        context_parts.append("")
+        context_parts.append("## Decisions Needing Review")
+        for d in stale[:3]:
+            context_parts.append(
+                f"- {str(d.get('description', ''))[:80]} (developmental, may need revisit)"
+            )
+
+    if failed:
+        context_parts.append("")
+        context_parts.append("## Failed Approaches (Don't Repeat)")
+        for f in failed[:3]:
+            context_parts.append(
+                f"- {str(f.get('approach', ''))[:60]}: {str(f.get('lesson', ''))[:60]}"
+            )
+
+    if not recent and not stale and not failed:
+        context_parts.append(
+            "No prior context. Decisions, corrections, and insights will be captured."
+        )
+
+    return {"context": "\n".join(context_parts), "project": project}
 
 
 def readTranscript(transcript_path: str) -> tuple[str, str, str]:
-    """Read transcript to extract recent user message and context."""
-    if not os.path.exists(transcript_path):
+    try:
+        with open(transcript_path, "r") as f:
+            messages = [json.loads(line) for line in f if line.strip()]
+    except (FileNotFoundError, json.JSONDecodeError):
         return "", "", ""
-
-    messages = []
-    with open(transcript_path, 'r') as f:
-        for line in f:
-            try:
-                messages.append(json.loads(line))
-            except json.JSONDecodeError:
-                continue
 
     user_message = ""
     assistant_response = ""
@@ -47,56 +73,38 @@ def readTranscript(transcript_path: str) -> tuple[str, str, str]:
         if msg.get("role") == "user" and not user_message:
             content = msg.get("content", "")
             if isinstance(content, list):
-                content = " ".join(
-                    c.get("text", "") for c in content if isinstance(c, dict)
-                )
+                content = " ".join(c.get("text", "") for c in content if isinstance(c, dict))
             user_message = str(content)
         elif msg.get("role") == "assistant" and not assistant_response:
             content = msg.get("content", "")
             if isinstance(content, list):
-                content = " ".join(
-                    c.get("text", "") for c in content if isinstance(c, dict)
-                )
+                content = " ".join(c.get("text", "") for c in content if isinstance(c, dict))
             assistant_response = str(content)
         if user_message and assistant_response:
             break
 
     context = "\n".join(
-        f"{m.get('role', 'unknown')}: {str(m.get('content', ''))[:200]}"
-        for m in messages[-10:-2]
+        f"{m.get('role', 'unknown')}: {str(m.get('content', ''))[:200]}" for m in messages[-10:-2]
     )
     return user_message, assistant_response, context
 
 
-def main():
-    try:
-        input_data = json.load(sys.stdin)
-    except json.JSONDecodeError:
-        return
-
-    session_id = input_data.get("session_id")
-    transcript_path = input_data.get("transcript_path")
-
-    if not session_id or not transcript_path:
-        return
-
+def handleMessageResponse(session_id: str, transcript_path: str, cwd: str) -> dict:
     user_message, claude_response, context = readTranscript(transcript_path)
-
     if not user_message:
-        return
+        return {"detections": 0}
 
     try:
         detections = asyncio.run(detectAll(user_message, claude_response, context))
     except Exception:
-        return
+        return {"detections": 0, "error": "detection_failed"}
 
     if not detections:
-        return
+        return {"detections": 0}
 
-    try:
-        client = getClient()
-    except Exception:
-        return
+    client = getClient()
+    project = cwd.rsplit("/", 1)[-1] if "/" in cwd else cwd
+    stored = 0
 
     for detection in detections:
         det_id = f"{detection.type}-{uuid.uuid4().hex[:8]}"
@@ -183,20 +191,40 @@ def main():
                         detection_confidence=detection.confidence,
                         detection_method="llm_extraction",
                     )
+            stored += 1
         except Exception:
             continue
 
-    try:
-        client.recordTelemetry(
-            event_type="detections",
-            project=os.path.basename(os.getcwd()),
-            data={"count": len(detections), "types": [d.type for d in detections]}
-        )
-    except Exception:
-        pass
+    client.recordTelemetry(
+        event_type="detections",
+        project=project,
+        data={"count": stored, "types": [d.type for d in detections]},
+    )
 
-    print(json.dumps({"detections": len(detections)}))
+    return {"detections": stored}
 
 
-if __name__ == "__main__":
-    main()
+def handleSessionEnd(session_id: str, transcript_path: Optional[str], cwd: str) -> dict:
+    client = getClient()
+    project = cwd.rsplit("/", 1)[-1] if "/" in cwd else cwd
+
+    transcript = ""
+    if transcript_path:
+        try:
+            with open(transcript_path, "r") as f:
+                transcript = f.read()
+        except Exception:
+            pass
+
+    summary = f"Session ended at {datetime.now().isoformat()}"
+    if transcript:
+        lines = transcript.strip().split("\n")
+        summary = f"Session with {len(lines)} message exchanges"
+
+    client.endSession(session_id=session_id, transcript=transcript[:100000], summary=summary)
+
+    client.recordTelemetry(
+        event_type="session_end", project=project, data={"session_id": session_id}
+    )
+
+    return {"session_ended": session_id}
