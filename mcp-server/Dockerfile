@@ -1,3 +1,16 @@
+# Build stage
+FROM python:3.12-slim AS builder
+
+WORKDIR /app
+
+RUN pip install --no-cache-dir uv
+
+COPY pyproject.toml .
+COPY src/ src/
+
+RUN uv pip install --system --target=/app/deps .
+
+# Runtime stage
 FROM python:3.12-slim
 
 LABEL org.opencontainers.image.source="https://github.com/patrickkidd/ccmemory"
@@ -6,15 +19,14 @@ LABEL org.opencontainers.image.licenses="MIT"
 
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
-RUN pip install --no-cache-dir uv
+RUN apt-get update && apt-get install -y --no-install-recommends curl && \
+    rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*
 
-COPY pyproject.toml .
+COPY --from=builder /app/deps /usr/local/lib/python3.12/site-packages
 COPY init.cypher .
 COPY src/ src/
 
-RUN uv pip install --system .
-
+ENV PYTHONPATH=/app/src
 ENV CCMEMORY_NEO4J_URI=bolt://ccmemory-neo4j:7687
 ENV CCMEMORY_NEO4J_PASSWORD=ccmemory
 
