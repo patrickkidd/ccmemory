@@ -1,19 +1,7 @@
-"""Claude-based reranking for semantic search results."""
+"""LLM-based reranking for semantic search results."""
 
-import json
-
-from anthropic import AsyncAnthropic
-
-RERANK_MODEL = "claude-sonnet-4-20250514"
-
-_client = None
-
-
-def _getClient():
-    global _client
-    if _client is None:
-        _client = AsyncAnthropic()
-    return _client
+from ccmemory.llmprovider import getLlmClient
+from ccmemory.detection.schemas import RerankResult
 
 
 RERANK_PROMPT = """Rank these items by relevance to the query. Return the indices of the {limit} most relevant items, ordered by relevance (most relevant first).
@@ -21,13 +9,11 @@ RERANK_PROMPT = """Rank these items by relevance to the query. Return the indice
 Query: {query}
 
 Items:
-{items}
-
-Return only JSON: {{"indices": [0, 3, 1, ...]}}"""
+{items}"""
 
 
 async def rerank(query: str, candidates: list[dict], limit: int = 5) -> list[dict]:
-    """Rerank candidates by relevance using Claude.
+    """Rerank candidates by relevance using LLM.
 
     Args:
         query: The search query
@@ -40,31 +26,19 @@ async def rerank(query: str, candidates: list[dict], limit: int = 5) -> list[dic
     if len(candidates) <= limit:
         return candidates
 
-    items_text = "\n".join(f"[{i}] {_formatCandidate(c)}" for i, c in enumerate(candidates))
-
+    items_text = "\n".join(
+        f"[{i}] {_formatCandidate(c)}" for i, c in enumerate(candidates)
+    )
     prompt = RERANK_PROMPT.format(limit=limit, query=query, items=items_text)
 
-    client = _getClient()
-    response = await client.messages.create(
-        model=RERANK_MODEL, max_tokens=200, messages=[{"role": "user", "content": prompt}]
-    )
-    text = response.content[0].text
+    client = getLlmClient()
+    result = await client.complete(prompt, RerankResult, maxTokens=200)
 
-    try:
-        start = text.find("{")
-        end = text.rfind("}") + 1
-        if start >= 0 and end > start:
-            result = json.loads(text[start:end])
-            indices = result.get("indices", [])
-            reranked = []
-            for idx in indices[:limit]:
-                if 0 <= idx < len(candidates):
-                    reranked.append(candidates[idx])
-            return reranked
-    except (json.JSONDecodeError, KeyError, TypeError):
-        pass
-
-    return candidates[:limit]
+    reranked = []
+    for idx in result.indices[:limit]:
+        if 0 <= idx < len(candidates):
+            reranked.append(candidates[idx])
+    return reranked if reranked else candidates[:limit]
 
 
 def _formatCandidate(candidate: dict) -> str:

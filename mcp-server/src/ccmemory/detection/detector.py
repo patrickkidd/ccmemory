@@ -1,13 +1,11 @@
 """LLM-based detection for context capture."""
 
 import asyncio
-import json
 import re
 from dataclasses import dataclass
 from typing import Optional
 
-from anthropic import AsyncAnthropic
-
+from ccmemory.llmprovider import getLlmClient
 from .prompts import (
     DECISION_PROMPT,
     CORRECTION_PROMPT,
@@ -16,18 +14,16 @@ from .prompts import (
     QUESTION_PROMPT,
     FAILED_APPROACH_PROMPT,
 )
+from .schemas import (
+    DecisionResult,
+    CorrectionResult,
+    ExceptionResult,
+    InsightResult,
+    QuestionResult,
+    FailedApproachResult,
+)
 
 CONFIDENCE_THRESHOLD = 0.7
-DETECTION_MODEL = "claude-sonnet-4-20250514"
-
-_client = None
-
-
-def _getClient():
-    global _client
-    if _client is None:
-        _client = AsyncAnthropic()
-    return _client
 
 
 @dataclass
@@ -37,8 +33,9 @@ class Detection:
     data: dict
 
 
-async def detectAll(user_message: str, claude_response: str,
-                    context: str) -> list[Detection]:
+async def detectAll(
+    user_message: str, claude_response: str, context: str
+) -> list[Detection]:
     """Run all detection prompts in parallel, filter by confidence."""
     if len(user_message.strip()) < 10:
         return []
@@ -63,144 +60,130 @@ async def detectAll(user_message: str, claude_response: str,
     return detections
 
 
-async def _callDetector(prompt: str) -> dict:
-    """Call LLM for classification."""
-    client = _getClient()
-    response = await client.messages.create(
-        model=DETECTION_MODEL,
-        max_tokens=500,
-        messages=[{"role": "user", "content": prompt}]
-    )
-    text = response.content[0].text
-
-    try:
-        start = text.find('{')
-        end = text.rfind('}') + 1
-        if start >= 0 and end > start:
-            return json.loads(text[start:end])
-    except json.JSONDecodeError:
-        pass
-    return {}
-
-
-async def detectDecision(user_message: str, claude_response: str,
-                         context: str) -> Optional[Detection]:
+async def detectDecision(
+    user_message: str, claude_response: str, context: str
+) -> Optional[Detection]:
     prompt = DECISION_PROMPT.format(
         context=context[:500],
         claude_response=claude_response[:500],
-        user_message=user_message
+        user_message=user_message,
     )
-    result = await _callDetector(prompt)
-    if result.get("is_decision"):
+    client = getLlmClient()
+    result = await client.complete(prompt, DecisionResult, maxTokens=500)
+    if result.isDecision:
         return Detection(
             type="decision",
-            confidence=result.get("confidence", 0.5),
+            confidence=result.confidence,
             data={
-                "description": result.get("description", user_message[:200]),
-                "rationale": result.get("rationale"),
-                "revisit_trigger": result.get("revisit_trigger"),
-            }
+                "description": result.description or user_message[:200],
+                "rationale": result.rationale,
+                "revisit_trigger": result.revisitTrigger,
+            },
         )
     return None
 
 
-async def detectCorrection(user_message: str, claude_response: str,
-                           context: str) -> Optional[Detection]:
+async def detectCorrection(
+    user_message: str, claude_response: str, context: str
+) -> Optional[Detection]:
     prompt = CORRECTION_PROMPT.format(
-        claude_response=claude_response[:500],
-        user_message=user_message
+        claude_response=claude_response[:500], user_message=user_message
     )
-    result = await _callDetector(prompt)
-    if result.get("is_correction"):
+    client = getLlmClient()
+    result = await client.complete(prompt, CorrectionResult, maxTokens=500)
+    if result.isCorrection:
         return Detection(
             type="correction",
-            confidence=result.get("confidence", 0.5),
+            confidence=result.confidence,
             data={
-                "wrong_belief": result.get("wrong_belief"),
-                "right_belief": result.get("right_belief"),
-                "severity": result.get("severity", "significant"),
-            }
+                "wrong_belief": result.wrongBelief,
+                "right_belief": result.rightBelief,
+                "severity": result.severity or "significant",
+            },
         )
     return None
 
 
-async def detectException(user_message: str, claude_response: str,
-                          context: str) -> Optional[Detection]:
-    prompt = EXCEPTION_PROMPT.format(
-        context=context[:500],
-        user_message=user_message
-    )
-    result = await _callDetector(prompt)
-    if result.get("is_exception"):
+async def detectException(
+    user_message: str, claude_response: str, context: str
+) -> Optional[Detection]:
+    prompt = EXCEPTION_PROMPT.format(context=context[:500], user_message=user_message)
+    client = getLlmClient()
+    result = await client.complete(prompt, ExceptionResult, maxTokens=500)
+    if result.isException:
         return Detection(
             type="exception",
-            confidence=result.get("confidence", 0.5),
+            confidence=result.confidence,
             data={
-                "rule_broken": result.get("rule_broken"),
-                "justification": result.get("justification"),
-                "scope": result.get("scope", "one-time"),
-            }
+                "rule_broken": result.ruleBroken,
+                "justification": result.justification,
+                "scope": result.scope or "one-time",
+            },
         )
     return None
 
 
-async def detectInsight(user_message: str, claude_response: str,
-                        context: str) -> Optional[Detection]:
+async def detectInsight(
+    user_message: str, claude_response: str, context: str
+) -> Optional[Detection]:
     prompt = INSIGHT_PROMPT.format(
         context=context[:500],
         claude_response=claude_response[:500],
-        user_message=user_message
+        user_message=user_message,
     )
-    result = await _callDetector(prompt)
-    if result.get("is_insight"):
+    client = getLlmClient()
+    result = await client.complete(prompt, InsightResult, maxTokens=500)
+    if result.isInsight:
         return Detection(
             type="insight",
-            confidence=result.get("confidence", 0.5),
+            confidence=result.confidence,
             data={
-                "category": result.get("category", "realization"),
-                "summary": result.get("summary"),
-                "implications": result.get("implications"),
-            }
+                "category": result.category or "realization",
+                "summary": result.summary,
+                "implications": result.implications,
+            },
         )
     return None
 
 
-async def detectQuestion(user_message: str, claude_response: str,
-                         context: str) -> Optional[Detection]:
+async def detectQuestion(
+    user_message: str, claude_response: str, context: str
+) -> Optional[Detection]:
     prompt = QUESTION_PROMPT.format(
-        claude_response=claude_response[:500],
-        user_message=user_message
+        claude_response=claude_response[:500], user_message=user_message
     )
-    result = await _callDetector(prompt)
-    if result.get("is_question"):
+    client = getLlmClient()
+    result = await client.complete(prompt, QuestionResult, maxTokens=500)
+    if result.isQuestion:
         return Detection(
             type="question",
-            confidence=result.get("confidence", 0.5),
+            confidence=result.confidence,
             data={
-                "question": result.get("question"),
-                "answer": result.get("answer"),
-                "context": result.get("context"),
-            }
+                "question": result.question,
+                "answer": result.answer,
+                "context": result.context,
+            },
         )
     return None
 
 
-async def detectFailedApproach(user_message: str, claude_response: str,
-                               context: str) -> Optional[Detection]:
+async def detectFailedApproach(
+    user_message: str, claude_response: str, context: str
+) -> Optional[Detection]:
     prompt = FAILED_APPROACH_PROMPT.format(
-        context=context[:500],
-        user_message=user_message
+        context=context[:500], user_message=user_message
     )
-    result = await _callDetector(prompt)
-    if result.get("is_failed_approach"):
+    client = getLlmClient()
+    result = await client.complete(prompt, FailedApproachResult, maxTokens=500)
+    if result.isFailedApproach:
         return Detection(
             type="failed_approach",
-            confidence=result.get("confidence", 0.5),
+            confidence=result.confidence,
             data={
-                "approach": result.get("approach"),
-                "outcome": result.get("outcome"),
-                "lesson": result.get("lesson"),
-            }
+                "approach": result.approach,
+                "outcome": result.outcome,
+                "lesson": result.lesson,
+            },
         )
     return None
 
@@ -218,9 +201,5 @@ async def detectReference(user_message: str) -> Optional[Detection]:
         refs.append({"type": "file_path", "uri": path})
 
     if refs:
-        return Detection(
-            type="reference",
-            confidence=0.9,
-            data={"references": refs}
-        )
+        return Detection(type="reference", confidence=0.9, data={"references": refs})
     return None
