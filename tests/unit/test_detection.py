@@ -1,67 +1,74 @@
 """Unit tests for LLM-based detection."""
 
 import pytest
-import re
 
-from ccmemory.detection.detector import detectReference, Detection
+from ccmemory.detection.detector import URL_PATTERN, PATH_PATTERN
+from ccmemory.detection.schemas import (
+    Decision,
+    Detection,
+    DetectionType,
+    Reference,
+    ReferenceData,
+    ReferenceType,
+)
 
 
 @pytest.mark.unit
-@pytest.mark.asyncio
-async def test_detect_reference_url():
-    """Test URL detection in user messages."""
+def test_url_pattern():
     message = "Check out https://example.com/docs for more info"
-    result = await detectReference(message)
-
-    assert result is not None
-    assert result.type == "reference"
-    assert result.confidence == 0.9
-    assert len(result.data["references"]) == 1
-    assert result.data["references"][0]["type"] == "url"
-    assert result.data["references"][0]["uri"] == "https://example.com/docs"
+    urls = URL_PATTERN.findall(message)
+    assert urls == ["https://example.com/docs"]
 
 
 @pytest.mark.unit
-@pytest.mark.asyncio
-async def test_detect_reference_multiple_urls():
-    """Test multiple URL detection."""
+def test_url_pattern_multiple():
     message = "See https://docs.python.org and https://flask.palletsprojects.com"
-    result = await detectReference(message)
-
-    assert result is not None
-    assert len(result.data["references"]) == 2
+    urls = URL_PATTERN.findall(message)
+    assert len(urls) == 2
 
 
 @pytest.mark.unit
-@pytest.mark.asyncio
-async def test_detect_reference_file_path():
-    """Test file path detection."""
+def test_path_pattern():
     message = "The config is in /etc/myapp/config.yaml"
-    result = await detectReference(message)
-
-    assert result is not None
-    assert any(r["type"] == "file_path" for r in result.data["references"])
+    paths = PATH_PATTERN.findall(message)
+    assert any("/etc/myapp/config.yaml" in p for p in paths)
 
 
 @pytest.mark.unit
-@pytest.mark.asyncio
-async def test_detect_reference_no_references():
-    """Test when no references are present."""
+def test_url_pattern_no_match():
     message = "Just a regular message with no links"
-    result = await detectReference(message)
-
-    assert result is None
+    urls = URL_PATTERN.findall(message)
+    assert urls == []
 
 
 @pytest.mark.unit
-def test_detection_dataclass():
-    """Test Detection dataclass."""
+def test_detection_model():
     detection = Detection(
-        type="decision",
+        type=DetectionType.Decision,
         confidence=0.85,
-        data={"description": "Test decision"}
+        data=Decision(confidence=0.85, description="Test decision"),
     )
-
-    assert detection.type == "decision"
+    assert detection.type == DetectionType.Decision
     assert detection.confidence == 0.85
-    assert detection.data["description"] == "Test decision"
+    assert isinstance(detection.data, Decision)
+    assert detection.data.description == "Test decision"
+
+
+@pytest.mark.unit
+def test_reference_model():
+    ref = Reference(type=ReferenceType.Url, uri="https://example.com")
+    assert ref.type == ReferenceType.Url
+    assert ref.uri == "https://example.com"
+
+
+@pytest.mark.unit
+def test_reference_data_model():
+    refs = ReferenceData(
+        references=[
+            Reference(type=ReferenceType.Url, uri="https://example.com"),
+            Reference(type=ReferenceType.FilePath, uri="/etc/config.yaml"),
+        ]
+    )
+    assert len(refs.references) == 2
+    assert refs.references[0].type == ReferenceType.Url
+    assert refs.references[1].type == ReferenceType.FilePath

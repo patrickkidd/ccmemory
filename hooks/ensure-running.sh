@@ -32,25 +32,30 @@ check_docker() {
 
 load_config() {
     if [ -f "$CONFIG_FILE" ]; then
-        ANTHROPIC_API_KEY=$(grep -o '"anthropic_api_key":"[^"]*"' "$CONFIG_FILE" 2>/dev/null | cut -d'"' -f4 || true)
+        ANTHROPIC_API_KEY="${ANTHROPIC_API_KEY:-$(grep -o '"anthropic_api_key":"[^"]*"' "$CONFIG_FILE" 2>/dev/null | cut -d'"' -f4 || true)}"
+        OPENAI_API_KEY="${OPENAI_API_KEY:-$(grep -o '"openai_api_key":"[^"]*"' "$CONFIG_FILE" 2>/dev/null | cut -d'"' -f4 || true)}"
+        GOOGLE_API_KEY="${GOOGLE_API_KEY:-$(grep -o '"google_api_key":"[^"]*"' "$CONFIG_FILE" 2>/dev/null | cut -d'"' -f4 || true)}"
     fi
-    # Fall back to environment
-    ANTHROPIC_API_KEY="${ANTHROPIC_API_KEY:-$ANTHROPIC_API_KEY}"
+}
+
+has_llm_key() {
+    [ -n "$ANTHROPIC_API_KEY" ] || [ -n "$OPENAI_API_KEY" ] || [ -n "$GOOGLE_API_KEY" ] || [ -n "$GEMINI_API_KEY" ]
 }
 
 prompt_keys() {
-    log "prompt_keys: checking ANTHROPIC_API_KEY='${ANTHROPIC_API_KEY:0:5}...'"
-    if [ -z "$ANTHROPIC_API_KEY" ]; then
-        log "prompt_keys: missing key, prompting"
+    log "prompt_keys: ANTHROPIC='${ANTHROPIC_API_KEY:+set}' OPENAI='${OPENAI_API_KEY:+set}' GOOGLE='${GOOGLE_API_KEY:+set}'"
+    if ! has_llm_key; then
+        log "prompt_keys: no LLM key found, prompting"
         echo ""
         echo "=== ccmemory First-Time Setup ==="
         echo ""
-        echo "API key required for ccmemory. It will be stored in ~/.ccmemory/config.json"
+        echo "An LLM API key is required. Set ONE of these environment variables:"
         echo ""
-        echo "ANTHROPIC_API_KEY not found."
-        echo "Get one at: https://console.anthropic.com/settings/keys"
+        echo "  ANTHROPIC_API_KEY  - https://console.anthropic.com/settings/keys"
+        echo "  OPENAI_API_KEY     - https://platform.openai.com/api-keys"
+        echo "  GOOGLE_API_KEY     - https://aistudio.google.com/apikey"
         echo ""
-        echo "Please set ANTHROPIC_API_KEY environment variable and retry."
+        echo "The key will be stored in ~/.ccmemory/config.json"
         exit 1
     fi
 }
@@ -61,7 +66,9 @@ save_config() {
     log "save_config: writing $CONFIG_FILE"
     cat > "$CONFIG_FILE" << EOF
 {
-  "anthropic_api_key": "$ANTHROPIC_API_KEY"
+  "anthropic_api_key": "${ANTHROPIC_API_KEY:-}",
+  "openai_api_key": "${OPENAI_API_KEY:-}",
+  "google_api_key": "${GOOGLE_API_KEY:-${GEMINI_API_KEY:-}}"
 }
 EOF
     chmod 600 "$CONFIG_FILE"
@@ -122,8 +129,11 @@ main() {
     log "Starting containers via docker compose..."
     echo "Starting ccmemory containers..."
 
-    # Export API key for docker compose
-    export ANTHROPIC_API_KEY
+    # Export API keys for docker compose
+    [ -n "$ANTHROPIC_API_KEY" ] && export ANTHROPIC_API_KEY
+    [ -n "$OPENAI_API_KEY" ] && export OPENAI_API_KEY
+    [ -n "$GOOGLE_API_KEY" ] && export GOOGLE_API_KEY
+    [ -n "$GEMINI_API_KEY" ] && export GEMINI_API_KEY
 
     # Start all services
     cd "$PROJECT_ROOT"

@@ -1,54 +1,108 @@
 """Pydantic schemas for LLM detection outputs."""
 
+import enum
 from pydantic import BaseModel
 
 
-class DecisionResult(BaseModel):
-    isDecision: bool
+class DetectionType(enum.StrEnum):
+    Decision = "decision"
+    Correction = "correction"
+    Exception = "exception"
+    Insight = "insight"
+    Question = "question"
+    FailedApproach = "failed_approach"
+    Reference = "reference"
+
+
+class Severity(enum.StrEnum):
+    Minor = "minor"
+    Significant = "significant"
+    Critical = "critical"
+
+
+class ExceptionScope(enum.StrEnum):
+    OneTime = "one-time"
+    Conditional = "conditional"
+    NewPrecedent = "new-precedent"
+
+
+class InsightCategory(enum.StrEnum):
+    Realization = "realization"
+    Analysis = "analysis"
+    Strategy = "strategy"
+    Personal = "personal"
+    Synthesis = "synthesis"
+
+
+class ReferenceType(enum.StrEnum):
+    Url = "url"
+    FilePath = "file_path"
+
+
+class Decision(BaseModel):
     confidence: float
-    description: str | None = None
+    description: str
     rationale: str | None = None
     revisitTrigger: str | None = None
 
 
-class CorrectionResult(BaseModel):
-    isCorrection: bool
+class Correction(BaseModel):
     confidence: float
-    wrongBelief: str | None = None
-    rightBelief: str | None = None
-    severity: str | None = None
+    wrongBelief: str
+    rightBelief: str
+    severity: Severity = Severity.Significant
 
 
-class ExceptionResult(BaseModel):
-    isException: bool
+class Exception_(BaseModel):
     confidence: float
-    ruleBroken: str | None = None
-    justification: str | None = None
-    scope: str | None = None
+    ruleBroken: str
+    justification: str
+    scope: ExceptionScope = ExceptionScope.OneTime
 
 
-class InsightResult(BaseModel):
-    isInsight: bool
+class Insight(BaseModel):
     confidence: float
-    category: str | None = None
-    summary: str | None = None
+    category: InsightCategory = InsightCategory.Realization
+    summary: str
     implications: str | None = None
 
 
-class QuestionResult(BaseModel):
-    isQuestion: bool
+class Question(BaseModel):
     confidence: float
-    question: str | None = None
-    answer: str | None = None
+    question: str
+    answer: str
     context: str | None = None
 
 
-class FailedApproachResult(BaseModel):
-    isFailedApproach: bool
+class FailedApproach(BaseModel):
     confidence: float
-    approach: str | None = None
-    outcome: str | None = None
+    approach: str
+    outcome: str
     lesson: str | None = None
+
+
+class Reference(BaseModel):
+    type: ReferenceType
+    uri: str
+
+
+class ReferenceData(BaseModel):
+    references: list[Reference]
+
+
+class DetectionOutput(BaseModel):
+    decisions: list[Decision] = []
+    corrections: list[Correction] = []
+    exceptions: list[Exception_] = []
+    insights: list[Insight] = []
+    questions: list[Question] = []
+    failedApproaches: list[FailedApproach] = []
+
+
+class Detection(BaseModel):
+    type: DetectionType
+    confidence: float
+    data: Decision | Correction | Exception_ | Insight | Question | FailedApproach | ReferenceData
 
 
 class RerankResult(BaseModel):

@@ -2,10 +2,20 @@ import json
 import uuid
 import asyncio
 from datetime import datetime
-from typing import Optional
 
 from .graph import getClient
 from .detection.detector import detectAll
+from .detection.schemas import (
+    Correction,
+    Decision,
+    Detection,
+    DetectionType,
+    Exception_,
+    FailedApproach,
+    Insight,
+    Question,
+    ReferenceData,
+)
 from .embeddings import getEmbedding
 
 
@@ -89,6 +99,101 @@ def readTranscript(transcript_path: str) -> tuple[str, str, str]:
     return user_message, assistant_response, context
 
 
+def _storeDetection(client, session_id: str, detection: Detection) -> bool:
+    det_id = f"{detection.type.value}-{uuid.uuid4().hex[:8]}"
+
+    try:
+        embedding = getEmbedding(detection.data.model_dump_json())
+    except Exception:
+        embedding = [0.0] * 1024
+
+    data = detection.data
+    match detection.type:
+        case DetectionType.Decision:
+            assert isinstance(data, Decision)
+            client.createDecision(
+                decision_id=det_id,
+                session_id=session_id,
+                description=data.description,
+                embedding=embedding,
+                rationale=data.rationale,
+                revisit_trigger=data.revisitTrigger,
+                detection_confidence=detection.confidence,
+                detection_method="llm_extraction",
+            )
+        case DetectionType.Correction:
+            assert isinstance(data, Correction)
+            client.createCorrection(
+                correction_id=det_id,
+                session_id=session_id,
+                wrong_belief=data.wrongBelief,
+                right_belief=data.rightBelief,
+                embedding=embedding,
+                severity=data.severity.value,
+                detection_confidence=detection.confidence,
+                detection_method="llm_extraction",
+            )
+        case DetectionType.Exception:
+            assert isinstance(data, Exception_)
+            client.createException(
+                exception_id=det_id,
+                session_id=session_id,
+                rule_broken=data.ruleBroken,
+                justification=data.justification,
+                embedding=embedding,
+                scope=data.scope.value,
+                detection_confidence=detection.confidence,
+                detection_method="llm_extraction",
+            )
+        case DetectionType.Insight:
+            assert isinstance(data, Insight)
+            client.createInsight(
+                insight_id=det_id,
+                session_id=session_id,
+                category=data.category.value,
+                summary=data.summary,
+                embedding=embedding,
+                implications=data.implications,
+                detection_confidence=detection.confidence,
+                detection_method="llm_extraction",
+            )
+        case DetectionType.Question:
+            assert isinstance(data, Question)
+            client.createQuestion(
+                question_id=det_id,
+                session_id=session_id,
+                question=data.question,
+                answer=data.answer,
+                context=data.context,
+                detection_confidence=detection.confidence,
+                detection_method="llm_extraction",
+            )
+        case DetectionType.FailedApproach:
+            assert isinstance(data, FailedApproach)
+            client.createFailedApproach(
+                fa_id=det_id,
+                session_id=session_id,
+                approach=data.approach,
+                outcome=data.outcome,
+                lesson=data.lesson or "",
+                detection_confidence=detection.confidence,
+                detection_method="llm_extraction",
+            )
+        case DetectionType.Reference:
+            assert isinstance(data, ReferenceData)
+            for ref in data.references:
+                ref_id = f"ref-{uuid.uuid4().hex[:8]}"
+                client.createReference(
+                    ref_id=ref_id,
+                    session_id=session_id,
+                    ref_type=ref.type.value,
+                    uri=ref.uri,
+                    detection_confidence=detection.confidence,
+                    detection_method="llm_extraction",
+                )
+    return True
+
+
 def handleMessageResponse(session_id: str, transcript_path: str, cwd: str) -> dict:
     user_message, claude_response, context = readTranscript(transcript_path)
     if not user_message:
@@ -107,104 +212,22 @@ def handleMessageResponse(session_id: str, transcript_path: str, cwd: str) -> di
     stored = 0
 
     for detection in detections:
-        det_id = f"{detection.type}-{uuid.uuid4().hex[:8]}"
-
         try:
-            text_for_embedding = json.dumps(detection.data)
-            embedding = getEmbedding(text_for_embedding)
-        except Exception:
-            embedding = [0.0] * 1024
-
-        try:
-            if detection.type == "decision":
-                client.createDecision(
-                    decision_id=det_id,
-                    session_id=session_id,
-                    description=detection.data.get("description", ""),
-                    embedding=embedding,
-                    rationale=detection.data.get("rationale"),
-                    revisit_trigger=detection.data.get("revisit_trigger"),
-                    detection_confidence=detection.confidence,
-                    detection_method="llm_extraction",
-                )
-            elif detection.type == "correction":
-                client.createCorrection(
-                    correction_id=det_id,
-                    session_id=session_id,
-                    wrong_belief=detection.data.get("wrong_belief", ""),
-                    right_belief=detection.data.get("right_belief", ""),
-                    embedding=embedding,
-                    severity=detection.data.get("severity"),
-                    detection_confidence=detection.confidence,
-                    detection_method="llm_extraction",
-                )
-            elif detection.type == "exception":
-                client.createException(
-                    exception_id=det_id,
-                    session_id=session_id,
-                    rule_broken=detection.data.get("rule_broken", ""),
-                    justification=detection.data.get("justification", ""),
-                    embedding=embedding,
-                    scope=detection.data.get("scope"),
-                    detection_confidence=detection.confidence,
-                    detection_method="llm_extraction",
-                )
-            elif detection.type == "insight":
-                client.createInsight(
-                    insight_id=det_id,
-                    session_id=session_id,
-                    category=detection.data.get("category", "realization"),
-                    summary=detection.data.get("summary", ""),
-                    embedding=embedding,
-                    implications=detection.data.get("implications"),
-                    detection_confidence=detection.confidence,
-                    detection_method="llm_extraction",
-                )
-            elif detection.type == "question":
-                client.createQuestion(
-                    question_id=det_id,
-                    session_id=session_id,
-                    question=detection.data.get("question", ""),
-                    answer=detection.data.get("answer", ""),
-                    context=detection.data.get("context"),
-                    detection_confidence=detection.confidence,
-                    detection_method="llm_extraction",
-                )
-            elif detection.type == "failed_approach":
-                client.createFailedApproach(
-                    fa_id=det_id,
-                    session_id=session_id,
-                    approach=detection.data.get("approach", ""),
-                    outcome=detection.data.get("outcome", ""),
-                    lesson=detection.data.get("lesson", ""),
-                    detection_confidence=detection.confidence,
-                    detection_method="llm_extraction",
-                )
-            elif detection.type == "reference":
-                for ref in detection.data.get("references", []):
-                    ref_id = f"ref-{uuid.uuid4().hex[:8]}"
-                    client.createReference(
-                        ref_id=ref_id,
-                        session_id=session_id,
-                        ref_type=ref.get("type", "url"),
-                        uri=ref.get("uri", ""),
-                        detection_confidence=detection.confidence,
-                        detection_method="llm_extraction",
-                    )
-            stored += 1
+            if _storeDetection(client, session_id, detection):
+                stored += 1
         except Exception:
             continue
 
     client.recordTelemetry(
         event_type="detections",
         project=project,
-        data={"count": stored, "types": [d.type for d in detections]},
+        data={"count": stored, "types": [d.type.value for d in detections]},
     )
 
     return {"detections": stored}
 
 
-def handleSessionEnd(session_id: str, transcript_path: Optional[str], cwd: str) -> dict:
+def handleSessionEnd(session_id: str, transcript_path: str | None, cwd: str) -> dict:
     client = getClient()
     project = cwd.rsplit("/", 1)[-1] if "/" in cwd else cwd
 
