@@ -65,6 +65,35 @@ The proactive insights from the previous section require graph operations: count
 
 **ccmemory uses both:** Search for discovery, graph for reasoning — that's where "probably relevant" becomes "definitely complete."
 
+
+---
+
+## Table of Contents
+
+- [Executive Summary](#executive-summary)
+- [The Problem: We Only Have Half of Time](#the-problem-we-only-have-half-of-time)
+- [Conceptual Foundation: Iterative Empiricism](#conceptual-foundation-iterative-empiricism)
+- [Plugin Architecture: Turnkey + Domain-Specific](#plugin-architecture-turnkey--domain-specific)
+- [The Two-Domain Architecture](#the-two-domain-architecture)
+- [Domain-Specific Instantiation](#domain-specific-instantiation)
+- [The Bridge Layer: Where Magic Happens](#the-bridge-layer-where-magic-happens)
+- [Active Research: Domain 2 as Living Knowledge](#active-research-domain-2-as-living-knowledge)
+- [The Co-Thinker Model](#the-co-thinker-model)
+- [Data Model Extensions](#data-model-extensions)
+- [Import Pipeline](#import-pipeline)
+- [Context Injection: How Knowledge Gets Used](#context-injection-how-knowledge-gets-used)
+- [MCP Server: Additional Tools](#mcp-server-additional-tools)
+- [Architecture Diagram](#architecture-diagram)
+- [Implementation Phases](#implementation-phases-revised)
+- [Core Principles](#core-principles)
+- [Migration Path](#migration-path-markdown-context-systems--universal-graph)
+- [Comparison: Original Plan vs. Universal Graph](#comparison-original-plan-vs-universal-graph)
+- [Success Metrics](#success-metrics-revised)
+- [Example: Multi-Domain Session](#example-multi-domain-session)
+- [Theoretical Foundation](#theoretical-foundation)
+- [References](#references)
+
+
 ## The Cognitive Coefficient
 
 Think of AI effectiveness as a multiplier on your input:
@@ -180,33 +209,6 @@ What this shows:
 - What's the dollar impact?
 - What patterns has the AI noticed across the organization?
 - What institutional knowledge is preserved vs. at risk?
-
----
-
-## Table of Contents
-
-- [Executive Summary](#executive-summary)
-- [The Problem: We Only Have Half of Time](#the-problem-we-only-have-half-of-time)
-- [Conceptual Foundation: Iterative Empiricism](#conceptual-foundation-iterative-empiricism)
-- [Plugin Architecture: Turnkey + Domain-Specific](#plugin-architecture-turnkey--domain-specific)
-- [The Two-Domain Architecture](#the-two-domain-architecture)
-- [Domain-Specific Instantiation](#domain-specific-instantiation)
-- [The Bridge Layer: Where Magic Happens](#the-bridge-layer-where-magic-happens)
-- [Active Research: Domain 2 as Living Knowledge](#active-research-domain-2-as-living-knowledge)
-- [The Co-Thinker Model](#the-co-thinker-model)
-- [Data Model Extensions](#data-model-extensions)
-- [Import Pipeline](#import-pipeline)
-- [Context Injection: How Knowledge Gets Used](#context-injection-how-knowledge-gets-used)
-- [MCP Server: Additional Tools](#mcp-server-additional-tools)
-- [Architecture Diagram](#architecture-diagram)
-- [Implementation Phases](#implementation-phases-revised)
-- [Core Principles](#core-principles)
-- [Migration Path](#migration-path-markdown-context-systems--universal-graph)
-- [Comparison: Original Plan vs. Universal Graph](#comparison-original-plan-vs-universal-graph)
-- [Success Metrics](#success-metrics-revised)
-- [Example: Multi-Domain Session](#example-multi-domain-session)
-- [Theoretical Foundation](#theoretical-foundation)
-- [References](#references)
 
 ---
 
