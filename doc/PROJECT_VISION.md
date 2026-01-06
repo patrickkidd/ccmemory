@@ -43,6 +43,28 @@ Not quite. Here's the difference:
 
 They're complementary: Copilot finds your documents; ccmemory remembers your thinking.
 
+### Why Graphs? (Not Just Search)
+
+*See [Why Graphs? Deep Dive](WHY_GRAPH.md) for technical details.*
+
+Search returns *probably relevant* results ranked by similarity. Ask for "all decisions about authentication" and you might get 8 of 10. A graph stores explicit relationships and returns *everything* connected — not a ranked guess.
+
+This is the difference between:
+- "What looks related to authentication?" (search) → probably-relevant results
+- "What decisions link to the auth system?" (graph) → all of them, traced through actual connections
+
+
+**Traceability:** Search gives isolated facts. A graph gives the story — trace backward ("why did we make this choice?") or forward ("what depends on this?"). This is thinking through consequences, not just retrieving information.
+
+The proactive insights from the previous section require graph operations:
+- "3 exceptions to the middleware rule" — counting exceptions linked to a specific rule
+- "4 supporting data points for this hypothesis" — counting evidence relationships
+- "Monday deployments have 2x the issues" — aggregating across deployment→outcome links
+
+The proactive insights from the previous section require graph operations: counting exceptions to a rule, counting evidence for a hypothesis, aggregating deployment→outcome patterns. Search can't count, trace, or guarantee completeness. The graph can.
+
+**ccmemory uses both:** Search for discovery, graph for reasoning — that's where "probably relevant" becomes "definitely complete."
+
 ## The Cognitive Coefficient
 
 Think of AI effectiveness as a multiplier on your input:
