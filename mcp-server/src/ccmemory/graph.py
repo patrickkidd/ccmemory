@@ -43,8 +43,13 @@ class GraphClient:
 
     # === Session Management ===
 
-    def createSession(self, session_id: str, project: str, started_at: str,
-                      branch: Optional[str] = None):
+    def createSession(
+        self,
+        session_id: str,
+        project: str,
+        started_at: str,
+        branch: Optional[str] = None,
+    ):
         with self.driver.session() as session:
             session.run(
                 """
@@ -54,8 +59,11 @@ class GraphClient:
                     s.user_id = $user_id,
                     s.branch = $branch
                 """,
-                id=session_id, project=project, started_at=started_at,
-                user_id=self.user_id, branch=branch
+                id=session_id,
+                project=project,
+                started_at=started_at,
+                user_id=self.user_id,
+                branch=branch,
             )
 
     def endSession(self, session_id: str, transcript: str, summary: str):
@@ -67,13 +75,64 @@ class GraphClient:
                     s.transcript = $transcript,
                     s.summary = $summary
                 """,
-                id=session_id, transcript=transcript, summary=summary
+                id=session_id,
+                transcript=transcript,
+                summary=summary,
             )
+
+    def sessionExists(self, session_id: str) -> bool:
+        with self.driver.session() as session:
+            result = session.run(
+                "MATCH (s:Session {id: $id}) RETURN count(s) > 0 as exists",
+                id=session_id,
+            )
+            return result.single()["exists"]
+
+    def filterExistingSessions(self, session_ids: list[str]) -> set[str]:
+        """Return set of session_ids that already exist in the database."""
+        if not session_ids:
+            return set()
+        with self.driver.session() as session:
+            result = session.run(
+                "UNWIND $ids AS id MATCH (s:Session {id: id}) RETURN s.id as id",
+                ids=session_ids,
+            )
+            return {r["id"] for r in result}
+
+    def decisionExists(self, project: str, description: str) -> bool:
+        with self.driver.session() as session:
+            result = session.run(
+                """
+                MATCH (d:Decision {project: $project, description: $description})
+                RETURN count(d) > 0 as exists
+                """,
+                project=project,
+                description=description,
+            )
+            return result.single()["exists"]
+
+    def referenceFileExists(self, project: str, source_file: str) -> bool:
+        with self.driver.session() as session:
+            result = session.run(
+                """
+                MATCH (c:ReferenceChunk {project: $project, source_file: $source_file})
+                RETURN count(c) > 0 as exists
+                """,
+                project=project,
+                source_file=source_file,
+            )
+            return result.single()["exists"]
 
     # === Domain 1: Record Functions ===
 
-    def createDecision(self, decision_id: str, session_id: str,
-                       description: str, embedding: list, **kwargs):
+    def createDecision(
+        self,
+        decision_id: str,
+        session_id: str,
+        description: str,
+        embedding: list,
+        **kwargs,
+    ):
         with self.driver.session() as session:
             session.run(
                 """
@@ -88,13 +147,22 @@ class GraphClient:
                 SET d += $props
                 CREATE (s)-[:DECIDED]->(d)
                 """,
-                session_id=session_id, decision_id=decision_id,
-                description=description, embedding=embedding, props=kwargs
+                session_id=session_id,
+                decision_id=decision_id,
+                description=description,
+                embedding=embedding,
+                props=kwargs,
             )
 
-    def createCorrection(self, correction_id: str, session_id: str,
-                         wrong_belief: str, right_belief: str,
-                         embedding: list, **kwargs):
+    def createCorrection(
+        self,
+        correction_id: str,
+        session_id: str,
+        wrong_belief: str,
+        right_belief: str,
+        embedding: list,
+        **kwargs,
+    ):
         with self.driver.session() as session:
             session.run(
                 """
@@ -109,14 +177,23 @@ class GraphClient:
                 SET c += $props
                 CREATE (s)-[:CORRECTED]->(c)
                 """,
-                session_id=session_id, correction_id=correction_id,
-                wrong_belief=wrong_belief, right_belief=right_belief,
-                embedding=embedding, props=kwargs
+                session_id=session_id,
+                correction_id=correction_id,
+                wrong_belief=wrong_belief,
+                right_belief=right_belief,
+                embedding=embedding,
+                props=kwargs,
             )
 
-    def createException(self, exception_id: str, session_id: str,
-                        rule_broken: str, justification: str,
-                        embedding: list, **kwargs):
+    def createException(
+        self,
+        exception_id: str,
+        session_id: str,
+        rule_broken: str,
+        justification: str,
+        embedding: list,
+        **kwargs,
+    ):
         with self.driver.session() as session:
             session.run(
                 """
@@ -131,13 +208,23 @@ class GraphClient:
                 SET e += $props
                 CREATE (s)-[:EXCEPTED]->(e)
                 """,
-                session_id=session_id, exception_id=exception_id,
-                rule_broken=rule_broken, justification=justification,
-                embedding=embedding, props=kwargs
+                session_id=session_id,
+                exception_id=exception_id,
+                rule_broken=rule_broken,
+                justification=justification,
+                embedding=embedding,
+                props=kwargs,
             )
 
-    def createInsight(self, insight_id: str, session_id: str,
-                      category: str, summary: str, embedding: list, **kwargs):
+    def createInsight(
+        self,
+        insight_id: str,
+        session_id: str,
+        category: str,
+        summary: str,
+        embedding: list,
+        **kwargs,
+    ):
         with self.driver.session() as session:
             session.run(
                 """
@@ -152,13 +239,17 @@ class GraphClient:
                 SET i += $props
                 CREATE (s)-[:REALIZED]->(i)
                 """,
-                session_id=session_id, insight_id=insight_id,
-                category=category, summary=summary,
-                embedding=embedding, props=kwargs
+                session_id=session_id,
+                insight_id=insight_id,
+                category=category,
+                summary=summary,
+                embedding=embedding,
+                props=kwargs,
             )
 
-    def createQuestion(self, question_id: str, session_id: str,
-                       question: str, answer: str, **kwargs):
+    def createQuestion(
+        self, question_id: str, session_id: str, question: str, answer: str, **kwargs
+    ):
         with self.driver.session() as session:
             session.run(
                 """
@@ -172,12 +263,22 @@ class GraphClient:
                 SET q += $props
                 CREATE (s)-[:ASKED]->(q)
                 """,
-                session_id=session_id, question_id=question_id,
-                question=question, answer=answer, props=kwargs
+                session_id=session_id,
+                question_id=question_id,
+                question=question,
+                answer=answer,
+                props=kwargs,
             )
 
-    def createFailedApproach(self, fa_id: str, session_id: str,
-                             approach: str, outcome: str, lesson: str, **kwargs):
+    def createFailedApproach(
+        self,
+        fa_id: str,
+        session_id: str,
+        approach: str,
+        outcome: str,
+        lesson: str,
+        **kwargs,
+    ):
         with self.driver.session() as session:
             session.run(
                 """
@@ -192,12 +293,17 @@ class GraphClient:
                 SET f += $props
                 CREATE (s)-[:TRIED]->(f)
                 """,
-                session_id=session_id, fa_id=fa_id,
-                approach=approach, outcome=outcome, lesson=lesson, props=kwargs
+                session_id=session_id,
+                fa_id=fa_id,
+                approach=approach,
+                outcome=outcome,
+                lesson=lesson,
+                props=kwargs,
             )
 
-    def createReference(self, ref_id: str, session_id: str,
-                        ref_type: str, uri: str, **kwargs):
+    def createReference(
+        self, ref_id: str, session_id: str, ref_type: str, uri: str, **kwargs
+    ):
         with self.driver.session() as session:
             session.run(
                 """
@@ -211,14 +317,16 @@ class GraphClient:
                 SET r += $props
                 CREATE (s)-[:REFERENCED]->(r)
                 """,
-                session_id=session_id, ref_id=ref_id,
-                ref_type=ref_type, uri=uri, props=kwargs
+                session_id=session_id,
+                ref_id=ref_id,
+                ref_type=ref_type,
+                uri=uri,
+                props=kwargs,
             )
 
     # === Domain 1: Query Functions ===
 
-    def queryRecent(self, project: str, limit: int = 20,
-                    include_team: bool = True):
+    def queryRecent(self, project: str, limit: int = 20, include_team: bool = True):
         """Get recent context for a project."""
         with self.driver.session() as session:
             if include_team and self.user_id:
@@ -234,12 +342,15 @@ class GraphClient:
                 ORDER BY n.timestamp DESC
                 LIMIT $limit
                 """,
-                project=project, user_id=self.user_id, limit=limit
+                project=project,
+                user_id=self.user_id,
+                limit=limit,
             )
             return [dict(record) for record in result]
 
-    def searchPrecedent(self, query: str, project: str, limit: int = 10,
-                        include_team: bool = True):
+    def searchPrecedent(
+        self, query: str, project: str, limit: int = 10, include_team: bool = True
+    ):
         """Full-text search across all node types with team visibility filtering."""
         with self.driver.session() as session:
             results = {}
@@ -266,13 +377,17 @@ class GraphClient:
                     ORDER BY score DESC
                     LIMIT $limit
                     """,
-                    search_query=query, project=project, user_id=self.user_id, limit=limit
+                    search_query=query,
+                    project=project,
+                    user_id=self.user_id,
+                    limit=limit,
                 )
                 results[key] = [(dict(r["node"]), r["score"]) for r in result]
             return results
 
-    def searchSemantic(self, embedding: list, project: str, limit: int = 10,
-                       include_team: bool = True):
+    def searchSemantic(
+        self, embedding: list, project: str, limit: int = 10, include_team: bool = True
+    ):
         """Vector similarity search across Domain 1 with team visibility filtering."""
         with self.driver.session() as session:
             results = {}
@@ -295,7 +410,10 @@ class GraphClient:
                     WHERE node.project = $project AND {visibility}
                     RETURN node, score
                     """,
-                    embedding=embedding, project=project, user_id=self.user_id, limit=limit
+                    embedding=embedding,
+                    project=project,
+                    user_id=self.user_id,
+                    limit=limit,
                 )
                 results[key] = [(dict(r["node"]), r["score"]) for r in result]
             return results
@@ -311,7 +429,8 @@ class GraphClient:
                 RETURN d
                 ORDER BY d.timestamp DESC
                 """,
-                project=project, days=days
+                project=project,
+                days=days,
             )
             return [dict(record["d"]) for record in result]
 
@@ -325,14 +444,22 @@ class GraphClient:
                 ORDER BY f.timestamp DESC
                 LIMIT $limit
                 """,
-                project=project, limit=limit
+                project=project,
+                limit=limit,
             )
             return [dict(record["f"]) for record in result]
 
     # === Domain 2: Chunk Index ===
 
-    def indexChunk(self, chunk_id: str, project: str, source_file: str,
-                   section: str, content: str, embedding: list):
+    def indexChunk(
+        self,
+        chunk_id: str,
+        project: str,
+        source_file: str,
+        section: str,
+        content: str,
+        embedding: list,
+    ):
         """Index a markdown chunk for semantic search."""
         with self.driver.session() as session:
             session.run(
@@ -345,8 +472,12 @@ class GraphClient:
                     ch.embedding = $embedding,
                     ch.last_indexed = datetime()
                 """,
-                chunk_id=chunk_id, project=project, source_file=source_file,
-                section=section, content=content, embedding=embedding
+                chunk_id=chunk_id,
+                project=project,
+                source_file=source_file,
+                section=section,
+                content=content,
+                embedding=embedding,
             )
 
     def searchReference(self, embedding: list, project: str, limit: int = 5):
@@ -359,7 +490,9 @@ class GraphClient:
                 WHERE node.project = $project
                 RETURN node, score
                 """,
-                embedding=embedding, project=project, limit=limit
+                embedding=embedding,
+                project=project,
+                limit=limit,
             )
             return [(dict(r["node"]), r["score"]) for r in result]
 
@@ -369,12 +502,12 @@ class GraphClient:
             if source_file:
                 session.run(
                     "MATCH (ch:Chunk {project: $project, source_file: $source_file}) DELETE ch",
-                    project=project, source_file=source_file
+                    project=project,
+                    source_file=source_file,
                 )
             else:
                 session.run(
-                    "MATCH (ch:Chunk {project: $project}) DELETE ch",
-                    project=project
+                    "MATCH (ch:Chunk {project: $project}) DELETE ch", project=project
                 )
 
     # === Promotion ===
@@ -410,11 +543,12 @@ class GraphClient:
                 })
                 """,
                 id=f"telem-{uuid.uuid4().hex[:12]}",
-                event_type=event_type, project=project,
+                event_type=event_type,
+                project=project,
                 user_id=self.user_id,
                 data_json=json.dumps(data),
                 count=data.get("count"),
-                duration_ms=data.get("duration_ms")
+                duration_ms=data.get("duration_ms"),
             )
 
     # === Metrics ===
@@ -426,7 +560,9 @@ class GraphClient:
         reexplanation = self.calculateReexplanationRate(project)
         correction_improvement = max(0.0, min(1.0, 1.0 - reexplanation))
 
-        coefficient = 1.0 + (curated * 0.02) + (correction_improvement * 0.5) + (reuse_rate * 1.0)
+        coefficient = (
+            1.0 + (curated * 0.02) + (correction_improvement * 0.5) + (reuse_rate * 1.0)
+        )
         return min(4.0, coefficient)
 
     def calculateReexplanationRate(self, project: str) -> float:
@@ -437,7 +573,7 @@ class GraphClient:
                 MATCH (c:Correction {project: $project})
                 RETURN count(c) as corrections
                 """,
-                project=project
+                project=project,
             )
             corrections = result.single()["corrections"]
 
@@ -446,7 +582,7 @@ class GraphClient:
                 MATCH (s:Session {project: $project})
                 RETURN count(s) as sessions
                 """,
-                project=project
+                project=project,
             )
             sessions = result.single()["sessions"]
 
@@ -465,7 +601,7 @@ class GraphClient:
                 RETURN CASE WHEN total = 0 THEN 0.0
                        ELSE with_precedent * 1.0 / total END as rate
                 """,
-                project=project
+                project=project,
             )
             return result.single()["rate"]
 
@@ -481,7 +617,7 @@ class GraphClient:
                 RETURN CASE WHEN nodes = 0 THEN 0.0
                        ELSE edges * 1.0 / nodes END as density
                 """,
-                project=project
+                project=project,
             )
             record = result.single()
             return record["density"] if record else 0.0
@@ -505,12 +641,13 @@ class GraphClient:
             if status:
                 result = session.run(
                     f"MATCH (n:{label} {{project: $project, status: $status}}) RETURN count(n) as count",
-                    project=project, status=status
+                    project=project,
+                    status=status,
                 )
             else:
                 result = session.run(
                     f"MATCH (n:{label} {{project: $project}}) RETURN count(n) as count",
-                    project=project
+                    project=project,
                 )
             return result.single()["count"]
 

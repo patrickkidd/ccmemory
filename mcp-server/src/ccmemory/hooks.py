@@ -19,7 +19,23 @@ from .detection.schemas import (
 from .embeddings import getEmbedding
 
 
-def handleSessionStart(session_id: str, cwd: str) -> dict:
+def filterPendingBackfillSessions(session_stems: list[str], client=None) -> list[str]:
+    """Given session stems from host filesystem, return those not yet backfilled."""
+    if not session_stems:
+        return []
+
+    if client is None:
+        client = getClient()
+
+    # Batch check for efficiency
+    backfill_ids = [f"backfill-{s}" for s in session_stems]
+    existing = client.filterExistingSessions(backfill_ids)
+    return [s for s in session_stems if f"backfill-{s}" not in existing]
+
+
+def handleSessionStart(
+    session_id: str, cwd: str, conversation_stems: list[str] | None = None
+) -> dict:
     project = cwd.rsplit("/", 1)[-1] if "/" in cwd else cwd
     client = getClient()
 
@@ -31,7 +47,11 @@ def handleSessionStart(session_id: str, cwd: str) -> dict:
     stale = client.queryStaleDecisions(project, days=30)
     failed = client.queryFailedApproaches(project, limit=5)
 
-    context_parts = [f"# Context Graph: {project}", f"Session: {session_id[:12]}...", ""]
+    context_parts = [
+        f"# Context Graph: {project}",
+        f"Session: {session_id[:12]}...",
+        "",
+    ]
 
     if recent:
         context_parts.append("## Recent Context")
@@ -50,8 +70,9 @@ def handleSessionStart(session_id: str, cwd: str) -> dict:
         context_parts.append("")
         context_parts.append("## Decisions Needing Review")
         for d in stale[:3]:
+            desc = str(d.get("description", ""))[:80]
             context_parts.append(
-                f"- {str(d.get('description', ''))[:80]} (developmental, may need revisit)"
+                f"- {desc} (developmental, may need revisit)"
             )
 
     if failed:
@@ -67,7 +88,23 @@ def handleSessionStart(session_id: str, cwd: str) -> dict:
             "No prior context. Decisions, corrections, and insights will be captured."
         )
 
-    return {"context": "\n".join(context_parts), "project": project}
+    pending = filterPendingBackfillSessions(conversation_stems or [], client)
+    if pending:
+        context_parts.append("")
+        context_parts.append("## Pending History Import")
+        context_parts.append(f"Found {len(pending)} conversation(s) not yet imported.")
+        context_parts.append("Use AskUserQuestion to offer importing:")
+        context_parts.append('- "Import 10 conversations" (Recommended)')
+        context_parts.append('- "Import all conversations"')
+        context_parts.append('- "Skip import"')
+        context_parts.append("If user accepts, call ccmemory_list_conversations then")
+        context_parts.append("ccmemory_backfill_conversation for each session.")
+
+    return {
+        "context": "\n".join(context_parts),
+        "project": project,
+        "pending_backfill": len(pending) if pending else 0,
+    }
 
 
 def readTranscript(transcript_path: str) -> tuple[str, str, str]:
@@ -83,18 +120,23 @@ def readTranscript(transcript_path: str) -> tuple[str, str, str]:
         if msg.get("role") == "user" and not user_message:
             content = msg.get("content", "")
             if isinstance(content, list):
-                content = " ".join(c.get("text", "") for c in content if isinstance(c, dict))
+                content = " ".join(
+                    c.get("text", "") for c in content if isinstance(c, dict)
+                )
             user_message = str(content)
         elif msg.get("role") == "assistant" and not assistant_response:
             content = msg.get("content", "")
             if isinstance(content, list):
-                content = " ".join(c.get("text", "") for c in content if isinstance(c, dict))
+                content = " ".join(
+                    c.get("text", "") for c in content if isinstance(c, dict)
+                )
             assistant_response = str(content)
         if user_message and assistant_response:
             break
 
     context = "\n".join(
-        f"{m.get('role', 'unknown')}: {str(m.get('content', ''))[:200]}" for m in messages[-10:-2]
+        f"{m.get('role', 'unknown')}: {str(m.get('content', ''))[:200]}"
+        for m in messages[-10:-2]
     )
     return user_message, assistant_response, context
 
@@ -244,7 +286,9 @@ def handleSessionEnd(session_id: str, transcript_path: str | None, cwd: str) -> 
         lines = transcript.strip().split("\n")
         summary = f"Session with {len(lines)} message exchanges"
 
-    client.endSession(session_id=session_id, transcript=transcript[:100000], summary=summary)
+    client.endSession(
+        session_id=session_id, transcript=transcript[:100000], summary=summary
+    )
 
     client.recordTelemetry(
         event_type="session_end", project=project, data={"session_id": session_id}

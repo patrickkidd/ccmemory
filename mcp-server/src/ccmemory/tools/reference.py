@@ -40,16 +40,15 @@ def _cacheUrlImpl(url: str, project_root: str) -> dict:
     main = soup.find("main") or soup.find("article") or soup.body
     text = main.get_text(separator="\n", strip=True) if main else ""
 
-    text = re.sub(r'\n{3,}', '\n\n', text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
 
     url_hash = hashlib.md5(url.encode()).hexdigest()[:8]
-    safe_name = re.sub(r'[^\w\-]', '-', str(title)[:50]).strip('-')
+    safe_name = re.sub(r"[^\w\-]", "-", str(title)[:50]).strip("-")
     filename = f"{safe_name}-{url_hash}.md"
     filepath = ref_path / filename
 
     timestamp = subprocess.run(
-        ['date', '-Iseconds'],
-        capture_output=True, text=True
+        ["date", "-Iseconds"], capture_output=True, text=True
     ).stdout.strip()
 
     content = f"""# {title}
@@ -88,8 +87,7 @@ def _cachePdfImpl(pdf_path: str, project_root: str) -> dict:
     filepath = ref_path / filename
 
     timestamp = subprocess.run(
-        ['date', '-Iseconds'],
-        capture_output=True, text=True
+        ["date", "-Iseconds"], capture_output=True, text=True
     ).stdout.strip()
 
     content = f"""# {source_name}
@@ -134,19 +132,16 @@ def _indexFile(filepath: Path, project_root: str, client=None) -> int:
 
     content = filepath.read_text()
 
-    sections = re.split(r'^(#{1,3}\s+.+)$', content, flags=re.MULTILINE)
+    sections = re.split(r"^(#{1,3}\s+.+)$", content, flags=re.MULTILINE)
 
     chunks = []
     current_section = "Overview"
 
     for part in sections:
-        if re.match(r'^#{1,3}\s+', part):
-            current_section = part.strip('#').strip()
+        if re.match(r"^#{1,3}\s+", part):
+            current_section = part.strip("#").strip()
         elif part.strip():
-            chunks.append({
-                "section": current_section,
-                "content": part.strip()[:2000]
-            })
+            chunks.append({"section": current_section, "content": part.strip()[:2000]})
 
     for i, chunk in enumerate(chunks):
         chunk_id = f"{relative_path}#{i}"
@@ -159,16 +154,20 @@ def _indexFile(filepath: Path, project_root: str, client=None) -> int:
             source_file=relative_path,
             section=chunk["section"],
             content=chunk["content"],
-            embedding=embedding
+            embedding=embedding,
         )
 
     return len(chunks)
+
+
+from .logging import logTool
 
 
 def registerReferenceTools(mcp: FastMCP):
     """Register all reference tools with the MCP server."""
 
     @mcp.tool()
+    @logTool
     async def cacheUrl(url: str) -> dict:
         """Cache a URL to the reference knowledge tree.
 
@@ -179,6 +178,7 @@ def registerReferenceTools(mcp: FastMCP):
         return _cacheUrlImpl(url, project_root)
 
     @mcp.tool()
+    @logTool
     async def cachePdf(path: str) -> dict:
         """Cache a PDF to the reference knowledge tree.
 
@@ -189,6 +189,7 @@ def registerReferenceTools(mcp: FastMCP):
         return _cachePdfImpl(path, project_root)
 
     @mcp.tool()
+    @logTool
     async def indexReference() -> dict:
         """Rebuild the reference knowledge index from all markdown files."""
         project_root = os.getcwd()
@@ -196,10 +197,8 @@ def registerReferenceTools(mcp: FastMCP):
         return {"indexed_chunks": count}
 
     @mcp.tool()
-    async def queryReference(
-        query: str,
-        limit: int = 5
-    ) -> dict:
+    @logTool
+    async def queryReference(query: str, limit: int = 5) -> dict:
         """Search the reference knowledge tree.
 
         Args:
@@ -219,13 +218,14 @@ def registerReferenceTools(mcp: FastMCP):
                     "file": r[0].get("source_file"),
                     "section": r[0].get("section"),
                     "content": r[0].get("content", "")[:300],
-                    "score": r[1]
+                    "score": r[1],
                 }
                 for r in results
             ]
         }
 
     @mcp.tool()
+    @logTool
     async def listReferences() -> dict:
         """List all cached reference files."""
         project_root = os.getcwd()
@@ -237,9 +237,11 @@ def registerReferenceTools(mcp: FastMCP):
         files = []
         for md_file in ref_path.rglob("*.md"):
             relative_path = str(md_file.relative_to(project_root))
-            files.append({
-                "path": relative_path,
-                "size": md_file.stat().st_size,
-            })
+            files.append(
+                {
+                    "path": relative_path,
+                    "size": md_file.stat().st_size,
+                }
+            )
 
         return {"files": files}

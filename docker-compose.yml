@@ -30,6 +30,8 @@ services:
       - NEO4J_PLUGINS=["apoc"]
       - NEO4J_dbms_memory_heap_initial__size=256m
       - NEO4J_dbms_memory_heap_max__size=512m
+      - NEO4J_dbms_logs_query_enabled=INFO
+      - NEO4J_dbms_logs_query_threshold=0ms
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:7474"]
       interval: 10s
@@ -44,18 +46,39 @@ services:
     container_name: ccmemory-mcp
     ports:
       - "8766:8766"
+    volumes:
+      - ccmemory_logs:/logs
     environment:
       - CCMEMORY_NEO4J_URI=bolt://neo4j:7687
       - CCMEMORY_NEO4J_PASSWORD=${CCMEMORY_NEO4J_PASSWORD:-ccmemory}
       - CCMEMORY_OLLAMA_URL=http://ollama:11434
       - CCMEMORY_OLLAMA_MODEL=${CCMEMORY_OLLAMA_MODEL:-all-minilm}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
       - CCMEMORY_USER_ID=${CCMEMORY_USER_ID}
+      - CCMEMORY_LOG_PATH=/logs/mcp.log
     depends_on:
       neo4j:
         condition: service_healthy
       ollama:
         condition: service_healthy
+    restart: unless-stopped
+
+  dashboard:
+    build:
+      context: ./dashboard
+      dockerfile: Dockerfile
+    container_name: ccmemory-dashboard
+    ports:
+      - "8765:8765"
+    volumes:
+      - ccmemory_logs:/logs:ro
+    environment:
+      - CCMEMORY_NEO4J_URI=bolt://neo4j:7687
+      - CCMEMORY_NEO4J_PASSWORD=${CCMEMORY_NEO4J_PASSWORD:-ccmemory}
+      - CCMEMORY_DASHBOARD_PORT=8765
+    depends_on:
+      - mcp
     restart: unless-stopped
 
 volumes:

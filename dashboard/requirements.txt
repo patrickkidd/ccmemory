@@ -1,0 +1,6 @@
+flask>=3.0.0
+neo4j>=5.0.0
+gunicorn>=21.0.0
+gevent>=23.0.0
+gevent-websocket>=0.10.1
+requests>=2.31.0

@@ -117,6 +117,45 @@ docker compose logs -f    # View logs
 
 ---
 
+## Backfilling Historical Data
+
+Import existing conversations and documentation into the context graph.
+
+### Import Conversations
+
+Copy this prompt exactly:
+
+```
+Use the ccmemory_backfill_conversation tool to import my Claude Code conversation history for THIS project only. The JSONL files are at ~/.claude/projects/ in a folder matching my current directory path with slashes replaced by dashes (e.g., /Users/patrick/myapp -> -Users-patrick-myapp). Read each JSONL file from that folder and call the tool with the project name (basename of cwd), session_id (filename without .jsonl), and the file content.
+```
+
+**Important:** Only import from the folder matching your current working directory. Do NOT import from other project folders.
+
+### Import Markdown
+
+Copy this prompt exactly:
+
+```
+Use the ccmemory_backfill_markdown tool to import my project's markdown files. Read each .md file and call the tool with project name, relative file path, and the file content.
+```
+
+### Decision Log Format
+
+Files with `## YYYY-MM-DD: Title` entries are parsed into Decision nodes:
+
+```markdown
+## 2025-01-15: Use JWT for Authentication
+**Context:** Need stateless auth for horizontal scaling
+**Options considered:** Sessions, JWT, OAuth tokens
+**Decision:** JWT with short expiry + refresh tokens
+**Reasoning:** Stateless required for K8s deployment
+**Revisit trigger:** If we need real-time session revocation
+```
+
+Other markdown is chunked and indexed as reference knowledge.
+
+---
+
 ## License
 
 Apache 2.0

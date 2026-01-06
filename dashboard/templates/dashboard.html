@@ -22,16 +22,44 @@
             padding: 1rem;
             border-radius: 4px;
         }
-        .context-decision { border-left: 4px solid #3273dc; }
-        .context-correction { border-left: 4px solid #ff3860; }
-        .context-insight { border-left: 4px solid #23d160; }
-        .context-question { border-left: 4px solid #ffdd57; }
-        .context-failed { border-left: 4px solid #f14668; }
+        .context-decision { border-left: 4px solid hsl(217, 71%, 53%); }
+        .context-correction { border-left: 4px solid hsl(348, 100%, 61%); }
+        .context-insight { border-left: 4px solid hsl(141, 53%, 53%); }
+        .context-question { border-left: 4px solid hsl(48, 100%, 67%); }
+        .context-failed { border-left: 4px solid hsl(344, 89%, 54%); }
         .coefficient-gauge {
             width: 200px;
             height: 100px;
             margin: 0 auto;
         }
+        .console-log {
+            height: 300px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 0.8rem;
+            padding: 0.5rem;
+        }
+        .filter-btn.is-active {
+            background-color: hsl(171, 100%, 41%);
+            border-color: transparent;
+            color: #fff;
+        }
+        .filter-btn:not(.is-active) {
+            opacity: 0.5;
+        }
+        .drop-zone {
+            border: 2px dashed;
+            cursor: pointer;
+        }
+        .drop-zone.hover {
+            background-color: hsl(217, 71%, 90%);
+        }
+        @media (prefers-color-scheme: dark) {
+            .drop-zone.hover {
+                background-color: hsl(217, 50%, 20%);
+            }
+        }
+        .hidden { display: none; }
     </style>
 </head>
 <body>
@@ -108,6 +136,30 @@
                 </div>
             </div>
 
+            <!-- Import Conversations -->
+            <div class="columns">
+                <div class="column is-half">
+                    <div class="box">
+                        <h3 class="title is-5">Import Conversations</h3>
+                        <div id="drop-zone" class="notification has-text-centered drop-zone">
+                            <p>Drop a .zip file here or click to upload</p>
+                            <p class="is-size-7 has-text-grey">Zip your ~/.claude/projects/*/&lt;uuid&gt;.jsonl files (max 50MB)</p>
+                            <input type="file" id="file-input" accept=".zip" class="hidden">
+                        </div>
+                        <div id="import-status" class="mt-3 hidden"></div>
+                    </div>
+                </div>
+                <div class="column is-half">
+                    <div class="box">
+                        <h3 class="title is-5">Database</h3>
+                        <button class="button is-danger is-outlined" onclick="clearDatabase()">
+                            Clear All Data for Project
+                        </button>
+                        <p class="is-size-7 has-text-grey mt-2">Deletes all sessions, decisions, corrections, insights for current project</p>
+                    </div>
+                </div>
+            </div>
+
             <!-- Recent Context -->
             <div class="columns">
                 <div class="column">
@@ -131,6 +183,29 @@
                         </div>
                     </div>
                     <div id="search-results"></div>
+                </div>
+            </div>
+
+            <!-- Developer Console -->
+            <div class="columns">
+                <div class="column">
+                    <div class="box">
+                        <div class="level">
+                            <div class="level-left">
+                                <h2 class="title is-5 mb-0">Developer Console</h2>
+                            </div>
+                            <div class="level-right">
+                                <span class="tag is-warning mr-2" id="ws-status">Connecting...</span>
+                                <div class="buttons are-small">
+                                    <button class="button filter-btn is-active" data-cat="hook" onclick="toggleFilter('hook', this)">Hooks</button>
+                                    <button class="button filter-btn is-active" data-cat="tool" onclick="toggleFilter('tool', this)">Tools</button>
+                                    <button class="button filter-btn is-active" data-cat="neo4j" onclick="toggleFilter('neo4j', this)">Neo4j</button>
+                                    <button class="button is-small" onclick="clearConsole()">Clear</button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="console-log box" id="console-log"></div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -302,6 +377,180 @@
         loadRecentContext();
 
         setInterval(loadMetrics, 30000);
+
+        // Developer Console WebSocket
+        const filters = {hook: true, tool: true, neo4j: true};
+        let ws;
+        let reconnectDelay = 1000;
+
+        function connectWs() {
+            const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+            ws = new WebSocket(`${protocol}//${location.host}/ws/logs`);
+            const statusEl = document.getElementById('ws-status');
+
+            ws.onopen = () => {
+                statusEl.textContent = 'Connected';
+                statusEl.className = 'tag is-success mr-2';
+                reconnectDelay = 1000;
+            };
+
+            ws.onclose = () => {
+                statusEl.textContent = 'Disconnected';
+                statusEl.className = 'tag is-danger mr-2';
+                setTimeout(connectWs, reconnectDelay);
+                reconnectDelay = Math.min(reconnectDelay * 2, 10000);
+            };
+
+            ws.onerror = () => {
+                statusEl.textContent = 'Error';
+                statusEl.className = 'tag is-danger mr-2';
+            };
+
+            ws.onmessage = (e) => {
+                try {
+                    const log = JSON.parse(e.data);
+                    const cat = log.cat || 'mcp';
+                    if (!filters[cat]) return;
+
+                    const div = document.createElement('div');
+                    const categoryClass = {
+                        'hook': 'has-text-info',
+                        'tool': 'has-text-success',
+                        'neo4j': 'has-text-warning',
+                    }[cat] || 'has-text-grey';
+                    div.className = categoryClass;
+                    if (log.error || log.level === 'ERROR') div.classList.add('has-text-danger');
+
+                    let time = '';
+                    if (log.ts) {
+                        // Convert "2026-01-06 22:42:17,447" to ISO format
+                        const isoTs = log.ts.replace(' ', 'T').replace(',', '.');
+                        time = new Date(isoTs).toLocaleTimeString();
+                    }
+                    const event = log.event || log.raw || '';
+                    const msg = log.msg ? `: ${log.msg}` : '';
+                    const duration = log.duration_ms ? ` (${log.duration_ms}ms)` : '';
+                    div.innerHTML = `<span class="has-text-grey">${time}</span> [${cat}] ${event}${msg}${duration}`;
+
+                    const container = document.getElementById('console-log');
+                    container.appendChild(div);
+                    container.scrollTop = container.scrollHeight;
+
+                    // Keep only last 500 entries
+                    while (container.children.length > 500) {
+                        container.removeChild(container.firstChild);
+                    }
+                } catch (err) {
+                    console.error('Failed to parse log:', err);
+                }
+            };
+        }
+
+        function toggleFilter(cat, btn) {
+            filters[cat] = !filters[cat];
+            btn.classList.toggle('is-active');
+        }
+
+        function clearConsole() {
+            document.getElementById('console-log').innerHTML = '';
+        }
+
+        connectWs();
+
+        // Import drag-drop handling
+        const dropZone = document.getElementById('drop-zone');
+        const fileInput = document.getElementById('file-input');
+        const importStatus = document.getElementById('import-status');
+
+        dropZone.addEventListener('click', () => fileInput.click());
+
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('hover');
+        });
+
+        dropZone.addEventListener('dragleave', () => {
+            dropZone.classList.remove('hover');
+        });
+
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('hover');
+            const file = e.dataTransfer.files[0];
+            if (file && file.name.endsWith('.zip')) {
+                uploadFile(file);
+            } else {
+                showImportStatus('error', 'Please upload a .zip file');
+            }
+        });
+
+        fileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) uploadFile(file);
+        });
+
+        async function uploadFile(file) {
+            showImportStatus('info', `Uploading ${file.name}...`);
+            dropZone.style.opacity = '0.5';
+            dropZone.style.pointerEvents = 'none';
+
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('project', project);
+
+            try {
+                showImportStatus('info', 'Processing conversations... (check console for progress)');
+                const response = await fetch('/api/import', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await response.json();
+
+                if (data.error) {
+                    showImportStatus('error', data.error);
+                } else {
+                    showImportStatus('success',
+                        `Processed: ${data.processed} files, ${data.detections} detections ` +
+                        `(${data.files_skipped} skipped)`
+                    );
+                    loadMetrics();
+                    loadRecentContext();
+                }
+            } catch (err) {
+                showImportStatus('error', 'Upload failed: ' + err.message);
+            } finally {
+                dropZone.style.opacity = '1';
+                dropZone.style.pointerEvents = 'auto';
+            }
+        }
+
+        function showImportStatus(type, message) {
+            importStatus.classList.remove('hidden');
+            const classes = {success: 'is-success', error: 'is-danger', info: 'is-info'};
+            importStatus.className = `notification ${classes[type] || 'is-info'} mt-3`;
+            importStatus.textContent = message;
+        }
+
+        async function clearDatabase() {
+            if (!confirm(`Delete ALL data for project "${project}"? This cannot be undone.`)) {
+                return;
+            }
+            try {
+                const response = await fetch(`/api/clear?project=${encodeURIComponent(project)}`, {
+                    method: 'DELETE'
+                });
+                const data = await response.json();
+                if (data.error) {
+                    alert('Error: ' + data.error);
+                } else {
+                    alert(`Deleted ${data.deleted} nodes`);
+                    loadMetrics();
+                    loadRecentContext();
+                }
+            } catch (err) {
+                alert('Failed to clear database: ' + err.message);
+            }
+        }
     </script>
 </body>
 </html>

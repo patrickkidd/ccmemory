@@ -44,6 +44,17 @@ Use these tools to retrieve relevant context:
 
 - `promoteDecisions` — Promote developmental decisions to curated (team-visible) status
 
+### Backfilling Historical Data
+
+- `ccmemory_backfill_conversation` — Import a JSONL conversation file
+- `ccmemory_backfill_markdown` — Import a markdown file
+
+**CRITICAL:** When backfilling, only import from the CURRENT project's folder.
+The JSONL files are at `~/.claude/projects/` in folders matching the full path with slashes replaced by dashes.
+
+Example: If cwd is `/Users/patrick/theapp`, import ONLY from `~/.claude/projects/-Users-patrick-theapp/`
+Do NOT import from `-Users-patrick-theapp-planner` or any other folder.
+
 ## Behaviors
 
 ### When the user makes a decision
@@ -88,6 +99,16 @@ Record with `recordInsight` for:
 - Strategic conclusions
 - Pattern recognition
 - Synthesized understanding
+
+### Session Startup: Check for Pending Imports
+
+**IMPORTANT:** At session start, if the injected context contains a "## Pending History Import" section showing conversations not yet imported, you MUST use `AskUserQuestion` to offer the user import options:
+
+- Option 1: "Import 10 conversations" (Recommended) — imports the 10 most recent quality conversations
+- Option 2: "Import all conversations" — imports all pending conversations
+- Option 3: "Skip import" — proceed without importing
+
+If the user chooses to import, use `ccmemory_list_conversations` to get the session list, then call `ccmemory_backfill_conversation` for each session (reading the JSONL file content first).
 
 ### Proactive Context Use
 

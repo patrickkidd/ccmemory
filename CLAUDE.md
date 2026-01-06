@@ -2,6 +2,15 @@
 
 Context graph for persistent memory across Claude Code sessions.
 
+## Session Startup Requirement
+
+**IMPORTANT:** If the session context shows "## Pending History Import" with conversations to import, you MUST immediately use `AskUserQuestion` to offer the user:
+- "Import 10 conversations" (Recommended)
+- "Import all"
+- "Skip"
+
+This is a required action, not optional.
+
 ## Project Structure
 
 ```

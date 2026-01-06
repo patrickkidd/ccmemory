@@ -1,4 +1,5 @@
 - Backfill from claude conversations
 - Logging / debug in development mode
 - Multiple projects on same MCP?
-- House neo4j in one MCP container?
+- House neo4j and mcp server in one container?
+- Import PR comment discussions as valuable decision records. *So much* domain knopwledge is only captured there.

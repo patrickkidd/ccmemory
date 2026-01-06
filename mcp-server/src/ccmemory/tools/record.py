@@ -8,12 +8,14 @@ from mcp.server.fastmcp import FastMCP
 
 from ..graph import getClient
 from ..embeddings import getEmbedding
+from .logging import logTool
 
 
 def registerRecordTools(mcp: FastMCP):
     """Register all record tools with the MCP server."""
 
     @mcp.tool()
+    @logTool
     async def recordDecision(
         description: str,
         rationale: Optional[str] = None,
@@ -86,6 +88,7 @@ def registerRecordTools(mcp: FastMCP):
         return {"decision_id": decision_id, "status": "recorded"}
 
     @mcp.tool()
+    @logTool
     async def recordCorrection(
         wrong_belief: str,
         right_belief: str,
@@ -148,6 +151,7 @@ def registerRecordTools(mcp: FastMCP):
         return {"correction_id": correction_id, "status": "recorded"}
 
     @mcp.tool()
+    @logTool
     async def recordException(
         rule_broken: str,
         justification: str,
@@ -210,6 +214,7 @@ def registerRecordTools(mcp: FastMCP):
         return {"exception_id": exception_id, "status": "recorded"}
 
     @mcp.tool()
+    @logTool
     async def recordInsight(
         summary: str,
         category: str = "realization",
@@ -277,6 +282,7 @@ def registerRecordTools(mcp: FastMCP):
         return {"insight_id": insight_id, "status": "recorded"}
 
     @mcp.tool()
+    @logTool
     async def recordQuestion(
         question: str,
         answer: str,
@@ -334,6 +340,7 @@ def registerRecordTools(mcp: FastMCP):
         return {"question_id": question_id, "status": "recorded"}
 
     @mcp.tool()
+    @logTool
     async def recordFailedApproach(
         approach: str,
         outcome: str,
@@ -392,6 +399,7 @@ def registerRecordTools(mcp: FastMCP):
         return {"failed_approach_id": fa_id, "status": "recorded"}
 
     @mcp.tool()
+    @logTool
     async def recordReference(
         uri: str,
         ref_type: str = "url",

@@ -8,12 +8,14 @@ from mcp.server.fastmcp import FastMCP
 from ..graph import getClient
 from ..embeddings import getEmbedding
 from ..reranker import rerank
+from .logging import logTool
 
 
 def registerQueryTools(mcp: FastMCP):
     """Register all query tools with the MCP server."""
 
     @mcp.tool()
+    @logTool
     async def queryContext(limit: int = 20, include_team: bool = True) -> dict:
         """Get recent context for the current project.
 
@@ -40,7 +42,10 @@ def registerQueryTools(mcp: FastMCP):
         return {"project": project, "context": formatted}
 
     @mcp.tool()
-    async def searchPrecedent(query: str, limit: int = 10, include_team: bool = True) -> dict:
+    @logTool
+    async def searchPrecedent(
+        query: str, limit: int = 10, include_team: bool = True
+    ) -> dict:
         """Full-text search across all context types.
 
         Args:
@@ -50,12 +55,17 @@ def registerQueryTools(mcp: FastMCP):
         """
         client = getClient()
         project = os.path.basename(os.getcwd())
-        results = client.searchPrecedent(query, project, limit=limit, include_team=include_team)
+        results = client.searchPrecedent(
+            query, project, limit=limit, include_team=include_team
+        )
 
         return {"project": project, "query": query, "results": results}
 
     @mcp.tool()
-    async def searchSemantic(query: str, limit: int = 10, include_team: bool = True) -> dict:
+    @logTool
+    async def searchSemantic(
+        query: str, limit: int = 10, include_team: bool = True
+    ) -> dict:
         """Semantic similarity search across decisions, corrections, and insights.
 
         Uses local embeddings for candidate retrieval, then Claude for reranking.
@@ -77,7 +87,9 @@ def registerQueryTools(mcp: FastMCP):
         candidates = []
         for category, items in results.items():
             for item in items:
-                candidates.append({"data": item[0], "score": item[1], "category": category})
+                candidates.append(
+                    {"data": item[0], "score": item[1], "category": category}
+                )
 
         candidates.sort(key=lambda x: x["score"], reverse=True)
 
@@ -93,6 +105,7 @@ def registerQueryTools(mcp: FastMCP):
         return {"project": project, "query": query, "results": formatted}
 
     @mcp.tool()
+    @logTool
     async def queryByTopic(topic: str, limit: int = 20) -> dict:
         """Get all context related to a specific topic.
 
@@ -120,6 +133,7 @@ def registerQueryTools(mcp: FastMCP):
         }
 
     @mcp.tool()
+    @logTool
     async def traceDecision(decision_id: str) -> dict:
         """Trace the full context around a decision.
 
@@ -163,6 +177,7 @@ def registerQueryTools(mcp: FastMCP):
             }
 
     @mcp.tool()
+    @logTool
     async def queryStaleDecisions(days: int = 30) -> dict:
         """Find developmental decisions that may need review.
 
@@ -176,6 +191,7 @@ def registerQueryTools(mcp: FastMCP):
         return {"project": project, "threshold_days": days, "stale_decisions": results}
 
     @mcp.tool()
+    @logTool
     async def queryFailedApproaches(limit: int = 10) -> dict:
         """Get recent failed approaches to avoid repeating mistakes.
 
@@ -189,6 +205,7 @@ def registerQueryTools(mcp: FastMCP):
         return {"project": project, "failed_approaches": results}
 
     @mcp.tool()
+    @logTool
     async def promoteDecisions(branch: Optional[str] = None) -> dict:
         """Promote developmental decisions to curated status.
 
@@ -202,6 +219,7 @@ def registerQueryTools(mcp: FastMCP):
         return {"project": project, "branch": branch, "status": "promoted"}
 
     @mcp.tool()
+    @logTool
     async def getMetrics() -> dict:
         """Get all context graph metrics for the current project."""
         client = getClient()

@@ -16,14 +16,11 @@ def main():
 @main.command()
 def start():
     """Start Neo4j and the dashboard."""
-    docker_dir = os.path.join(os.path.dirname(__file__), '..', '..', '..', 'docker')
+    docker_dir = os.path.join(os.path.dirname(__file__), "..", "..", "..", "docker")
 
     click.echo("Starting Neo4j...")
     result = subprocess.run(
-        ['docker-compose', 'up', '-d'],
-        cwd=docker_dir,
-        capture_output=True,
-        text=True
+        ["docker-compose", "up", "-d"], cwd=docker_dir, capture_output=True, text=True
     )
 
     if result.returncode != 0:
@@ -35,9 +32,11 @@ def start():
 
     click.echo("\nWaiting for Neo4j to be ready...")
     import time
+
     for _ in range(30):
         try:
             from .graph import getClient
+
             client = getClient()
             client.driver.verify_connectivity()
             click.echo("Neo4j is ready!")
@@ -48,38 +47,33 @@ def start():
         click.echo("Warning: Neo4j may not be fully ready yet", err=True)
 
     click.echo("\nInitializing schema...")
-    init_cypher = os.path.join(docker_dir, 'init.cypher')
+    init_cypher = os.path.join(docker_dir, "init.cypher")
     if os.path.exists(init_cypher):
-        try:
-            from .graph import getClient
-            client = getClient()
-            with open(init_cypher, 'r') as f:
-                statements = f.read().split(';')
-                for stmt in statements:
-                    stmt = stmt.strip()
-                    if stmt and not stmt.startswith('//'):
-                        try:
-                            with client.driver.session() as session:
-                                session.run(stmt)
-                        except Exception as e:
-                            if 'already exists' not in str(e).lower():
-                                click.echo(f"Warning: {e}", err=True)
-            click.echo("Schema initialized!")
-        except Exception as e:
-            click.echo(f"Warning: Could not initialize schema: {e}", err=True)
+        from .graph import getClient
+
+        client = getClient()
+        with open(init_cypher, "r") as f:
+            statements = f.read().split(";")
+            for stmt in statements:
+                stmt = stmt.strip()
+                if stmt and not stmt.startswith("//"):
+                    try:
+                        with client.driver.session() as session:
+                            session.run(stmt)
+                    except Exception as e:
+                        if "already exists" not in str(e).lower():
+                            click.echo(f"Warning: {e}", err=True)
+        click.echo("Schema initialized!")
 
 
 @main.command()
 def stop():
     """Stop Neo4j."""
-    docker_dir = os.path.join(os.path.dirname(__file__), '..', '..', '..', 'docker')
+    docker_dir = os.path.join(os.path.dirname(__file__), "..", "..", "..", "docker")
 
     click.echo("Stopping Neo4j...")
     result = subprocess.run(
-        ['docker-compose', 'down'],
-        cwd=docker_dir,
-        capture_output=True,
-        text=True
+        ["docker-compose", "down"], cwd=docker_dir, capture_output=True, text=True
     )
 
     if result.returncode != 0:
@@ -94,6 +88,7 @@ def status():
     """Check Neo4j connection status."""
     try:
         from .graph import getClient
+
         client = getClient()
         client.driver.verify_connectivity()
         click.echo("Neo4j: Connected")
@@ -115,26 +110,29 @@ def status():
 
 
 @main.command()
-@click.option('--port', default=8765, help='Port to run dashboard on')
-@click.option('--debug', is_flag=True, help='Run in debug mode')
+@click.option("--port", default=8765, help="Port to run dashboard on")
+@click.option("--debug", is_flag=True, help="Run in debug mode")
 def dashboard(port, debug):
     """Start the web dashboard."""
-    os.environ['CCMEMORY_DASHBOARD_PORT'] = str(port)
+    os.environ["CCMEMORY_DASHBOARD_PORT"] = str(port)
     if debug:
-        os.environ['CCMEMORY_DEBUG'] = 'true'
+        os.environ["CCMEMORY_DEBUG"] = "true"
 
     click.echo(f"Starting dashboard on http://localhost:{port}")
 
     # Dashboard is at project root level (ccmemory/dashboard)
     # This file is at: ccmemory/mcp-server/src/ccmemory/cli.py
-    project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
+    project_root = os.path.abspath(
+        os.path.join(os.path.dirname(__file__), "..", "..", "..")
+    )
     sys.path.insert(0, project_root)
     from dashboard.app import app
-    app.run(host='0.0.0.0', port=port, debug=debug)
+
+    app.run(host="0.0.0.0", port=port, debug=debug)
 
 
 @main.command()
-@click.argument('url')
+@click.argument("url")
 def cache(url):
     """Cache a URL to the reference knowledge tree."""
     from .tools.reference import _cacheUrlImpl
@@ -146,8 +144,8 @@ def cache(url):
     click.echo(f"Characters: {result['chars']}")
 
 
-@main.command('cache-pdf')
-@click.argument('path')
+@main.command("cache-pdf")
+@click.argument("path")
 def cache_pdf(path):
     """Cache a PDF to the reference knowledge tree."""
     from .tools.reference import _cachePdfImpl
@@ -169,8 +167,8 @@ def index():
 
 
 @main.command()
-@click.argument('query')
-@click.option('--limit', default=10, help='Maximum results')
+@click.argument("query")
+@click.option("--limit", default=10, help="Maximum results")
 def search(query, limit):
     """Search the context graph."""
     from .graph import getClient
@@ -184,12 +182,17 @@ def search(query, limit):
             click.echo(f"\n{category.upper()}")
             click.echo("-" * 40)
             for item, score in items:
-                desc = item.get('description') or item.get('summary') or item.get('right_belief') or str(item)[:80]
+                desc = (
+                    item.get("description")
+                    or item.get("summary")
+                    or item.get("right_belief")
+                    or str(item)[:80]
+                )
                 click.echo(f"  [{score:.2f}] {desc}")
 
 
 @main.command()
-@click.option('--days', default=30, help='Days threshold for stale decisions')
+@click.option("--days", default=30, help="Days threshold for stale decisions")
 def stale(days):
     """Show stale developmental decisions."""
     from .graph import getClient
@@ -205,12 +208,12 @@ def stale(days):
     click.echo(f"Stale decisions (>{days} days old):")
     for d in results:
         click.echo(f"  - {d.get('description', 'No description')[:60]}")
-        if d.get('revisit_trigger'):
+        if d.get("revisit_trigger"):
             click.echo(f"    Revisit trigger: {d['revisit_trigger']}")
 
 
 @main.command()
-@click.option('--branch', help='Only promote decisions from this branch')
+@click.option("--branch", help="Only promote decisions from this branch")
 def promote(branch):
     """Promote developmental decisions to curated status."""
     from .graph import getClient
@@ -226,7 +229,7 @@ def promote(branch):
 
 
 @main.command()
-@click.option('--format', 'fmt', type=click.Choice(['text', 'json']), default='text')
+@click.option("--format", "fmt", type=click.Choice(["text", "json"]), default="text")
 def stats(fmt):
     """Show context graph statistics."""
     from .graph import getClient
@@ -236,7 +239,7 @@ def stats(fmt):
     client = getClient()
     metrics = client.getAllMetrics(project)
 
-    if fmt == 'json':
+    if fmt == "json":
         click.echo(json_module.dumps(metrics, indent=2))
     else:
         click.echo(f"Project: {project}")
@@ -253,5 +256,5 @@ def stats(fmt):
         click.echo(f"  Graph Density: {metrics['graph_density']:.2f}")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

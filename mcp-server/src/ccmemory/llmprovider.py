@@ -16,7 +16,7 @@ class Provider(Enum):
 MODELS = {
     Provider.Anthropic: "claude-sonnet-4-20250514",
     Provider.OpenAi: "gpt-4o-mini",
-    Provider.Gemini: "gemini-1.5-flash",
+    Provider.Gemini: "gemini-2.0-flash",
 }
 
 T = TypeVar("T", bound=BaseModel)
@@ -74,11 +74,10 @@ class LlmClient:
         key = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
         if not key:
             raise RuntimeError("GOOGLE_API_KEY required for gemini provider")
-        import google.generativeai as genai
+        from google import genai
 
-        genai.configure(api_key=key)
         self._provider = Provider.Gemini
-        self._client = genai
+        self._client = genai.Client(api_key=key)
 
     @property
     def provider(self) -> Provider:
@@ -137,16 +136,20 @@ class LlmClient:
         self, prompt: str, schema: type[T], model: str, maxTokens: int
     ) -> T:
         import asyncio
+        from google.genai import types
 
-        model_obj = self._client.GenerativeModel(
-            model,
-            generation_config={
-                "response_mime_type": "application/json",
-                "response_schema": schema,
-                "max_output_tokens": maxTokens,
-            },
-        )
-        response = await asyncio.to_thread(model_obj.generate_content, prompt)
+        def generate():
+            return self._client.models.generate_content(
+                model=model,
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    response_mime_type="application/json",
+                    response_schema=schema,
+                    max_output_tokens=maxTokens,
+                ),
+            )
+
+        response = await asyncio.to_thread(generate)
         return schema.model_validate_json(response.text)
 
 
