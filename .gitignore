@@ -26,6 +26,7 @@ htmlcov/
 
 # ccmemory local data
 .ccmemory/
+instance/
 
 # Environment
 .env

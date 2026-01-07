@@ -24,7 +24,7 @@ services:
       - "7687:7687"
     volumes:
       - ccmemory_data:/data
-      - ccmemory_logs:/logs
+      - ./instance:/instance
     environment:
       - NEO4J_AUTH=neo4j/${CCMEMORY_NEO4J_PASSWORD:-ccmemory}
       - NEO4J_PLUGINS=["apoc"]
@@ -32,11 +32,13 @@ services:
       - NEO4J_dbms_memory_heap_max__size=512m
       - NEO4J_dbms_logs_query_enabled=INFO
       - NEO4J_dbms_logs_query_threshold=0ms
+      - NEO4J_dbms_logs_query_path=/instance/neo4j.log
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:7474"]
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 30s
     restart: unless-stopped
 
   mcp:
@@ -47,7 +49,7 @@ services:
     ports:
       - "8766:8766"
     volumes:
-      - ccmemory_logs:/logs
+      - ./instance:/instance
     environment:
       - CCMEMORY_NEO4J_URI=bolt://neo4j:7687
       - CCMEMORY_NEO4J_PASSWORD=${CCMEMORY_NEO4J_PASSWORD:-ccmemory}
@@ -56,7 +58,7 @@ services:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - GOOGLE_API_KEY=${GOOGLE_API_KEY}
       - CCMEMORY_USER_ID=${CCMEMORY_USER_ID}
-      - CCMEMORY_LOG_PATH=/logs/mcp.log
+      - CCMEMORY_MCP_LOG=/instance/mcp.jsonl
     depends_on:
       neo4j:
         condition: service_healthy
@@ -72,11 +74,15 @@ services:
     ports:
       - "8765:8765"
     volumes:
-      - ccmemory_logs:/logs:ro
+      - ./instance:/instance:ro
     environment:
+      - GEVENT_SUPPORT=True
       - CCMEMORY_NEO4J_URI=bolt://neo4j:7687
       - CCMEMORY_NEO4J_PASSWORD=${CCMEMORY_NEO4J_PASSWORD:-ccmemory}
       - CCMEMORY_DASHBOARD_PORT=8765
+      - CCMEMORY_MCP_LOG=/instance/mcp.jsonl
+      - CCMEMORY_NEO4J_LOG=/instance/neo4j.log
+      - CCMEMORY_MCP_URL=http://mcp:8766
     depends_on:
       - mcp
     restart: unless-stopped
@@ -84,7 +90,5 @@ services:
 volumes:
   ccmemory_data:
     name: ccmemory_data
-  ccmemory_logs:
-    name: ccmemory_logs
   ollama_data:
     name: ccmemory_ollama_data

@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ccmemory Dashboard - {{ project }}</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@0.9.4/css/bulma.min.css">
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         .metric-card {
             text-align: center;
@@ -60,19 +59,40 @@
             }
         }
         .hidden { display: none; }
+        a.metric-card { text-decoration: none; color: inherit; display: block; transition: transform 0.1s; }
+        a.metric-card:hover { transform: scale(1.02); }
     </style>
 </head>
 <body>
     <nav class="navbar is-dark">
         <div class="navbar-brand">
-            <span class="navbar-item is-size-4">
-                <strong>ccmemory</strong>&nbsp;Dashboard
-            </span>
+            <a class="navbar-item is-size-4" href="/?project={{ project }}">
+                <strong>ccmemory</strong>
+            </a>
+            <a role="button" class="navbar-burger" data-target="navMenu">
+                <span></span><span></span><span></span>
+            </a>
         </div>
-        <div class="navbar-menu">
+        <div id="navMenu" class="navbar-menu">
+            <div class="navbar-start">
+                <a class="navbar-item" href="/decisions?project={{ project }}">Decisions</a>
+                <a class="navbar-item" href="/corrections?project={{ project }}">Corrections</a>
+                <a class="navbar-item" href="/insights?project={{ project }}">Insights</a>
+                <a class="navbar-item" href="/sessions?project={{ project }}">Sessions</a>
+                <div class="navbar-item has-dropdown is-hoverable">
+                    <a class="navbar-link">More</a>
+                    <div class="navbar-dropdown">
+                        <a class="navbar-item" href="/failed-approaches?project={{ project }}">Failed Approaches</a>
+                        <a class="navbar-item" href="/exceptions?project={{ project }}">Exceptions</a>
+                        <a class="navbar-item" href="/questions?project={{ project }}">Questions</a>
+                    </div>
+                </div>
+            </div>
             <div class="navbar-end">
                 <div class="navbar-item">
-                    <span class="tag is-info is-medium">{{ project }}</span>
+                    <div class="select is-info">
+                        <select id="project-select"></select>
+                    </div>
                 </div>
             </div>
         </div>
@@ -89,38 +109,38 @@
                     </div>
                 </div>
                 <div class="column is-3">
-                    <div class="box metric-card">
+                    <a href="/decisions?project={{ project }}" class="box metric-card">
                         <p class="metric-value has-text-info" id="decisions">-</p>
                         <p class="metric-label">Total Decisions</p>
-                    </div>
+                    </a>
                 </div>
                 <div class="column is-3">
-                    <div class="box metric-card">
+                    <a href="/corrections?project={{ project }}" class="box metric-card">
                         <p class="metric-value has-text-danger" id="corrections">-</p>
                         <p class="metric-label">Corrections</p>
-                    </div>
+                    </a>
                 </div>
                 <div class="column is-3">
-                    <div class="box metric-card">
+                    <a href="/insights?project={{ project }}" class="box metric-card">
                         <p class="metric-value has-text-success" id="insights">-</p>
                         <p class="metric-label">Insights</p>
-                    </div>
+                    </a>
                 </div>
             </div>
 
             <!-- Secondary Metrics -->
             <div class="columns is-multiline">
                 <div class="column is-3">
-                    <div class="box metric-card">
+                    <a href="/sessions?project={{ project }}" class="box metric-card">
                         <p class="metric-value has-text-grey" id="sessions">-</p>
                         <p class="metric-label">Sessions</p>
-                    </div>
+                    </a>
                 </div>
                 <div class="column is-3">
-                    <div class="box metric-card">
+                    <a href="/failed-approaches?project={{ project }}" class="box metric-card">
                         <p class="metric-value has-text-warning" id="failed">-</p>
                         <p class="metric-label">Failed Approaches</p>
-                    </div>
+                    </a>
                 </div>
                 <div class="column is-3">
                     <div class="box metric-card">
@@ -378,8 +398,34 @@
 
         setInterval(loadMetrics, 30000);
 
+        // Navbar burger toggle
+        document.querySelector('.navbar-burger').addEventListener('click', () => {
+            document.querySelector('.navbar-burger').classList.toggle('is-active');
+            document.getElementById('navMenu').classList.toggle('is-active');
+        });
+
+        // Project selector
+        async function loadProjects() {
+            const select = document.getElementById('project-select');
+            const response = await fetch('/api/projects');
+            const projects = await response.json();
+            // Auto-select first project if none specified
+            const selectedProject = project || (projects.length > 0 ? projects[0] : '');
+            if (!project && selectedProject) {
+                window.location.href = `/?project=${encodeURIComponent(selectedProject)}`;
+                return;
+            }
+            select.innerHTML = projects.map(p =>
+                `<option value="${p}" ${p === selectedProject ? 'selected' : ''}>${p}</option>`
+            ).join('');
+            select.addEventListener('change', () => {
+                window.location.href = `/?project=${encodeURIComponent(select.value)}`;
+            });
+        }
+        loadProjects();
+
         // Developer Console WebSocket
-        const filters = {hook: true, tool: true, neo4j: true};
+        const filters = {hook: true, tool: true, neo4j: true, mcp: true};
         let ws;
         let reconnectDelay = 1000;
 

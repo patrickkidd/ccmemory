@@ -63,6 +63,32 @@ ccmemory automatically detects and stores the decision. Start a new session and 
 - Use Postgres for concurrent write support (Jan 4)
 ```
 
+### Web Interfaces
+
+Once containers are running, access:
+
+- **Dashboard:** http://localhost:8888 — Browse and manage stored memories
+- **Neo4j Browser:** http://localhost:7474 — Direct graph database access
+
+### Visualizing the Graph
+
+In Neo4j Browser (http://localhost:7474), try these queries:
+
+```cypher
+# See all nodes and relationships
+MATCH (n)-[r]->(m) RETURN n, r, m LIMIT 100
+
+# View decisions for a specific project
+MATCH (s:Session)-[:HAS_DECISION]->(d:Decision)
+WHERE s.projectName = 'your-project'
+RETURN s, d
+
+# See the full session structure
+MATCH (s:Session)-[r]->(n) RETURN s, r, n LIMIT 50
+```
+
+Click any node in the visualization to expand its connections. The graph view shows how sessions, decisions, corrections, and other memory types relate to each other.
+
 ---
 
 ## What Gets Captured

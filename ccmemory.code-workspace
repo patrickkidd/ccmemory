@@ -4,5 +4,27 @@
 			"path": "."
 		}
 	],
-	"settings": {}
+	"settings": {
+		"[json]": {
+			"editor.defaultFormatter": "vscode.json-language-features"
+		},
+
+		"python.testing.pytestEnabled": false,
+		"python.analysis.extraPaths": [
+			"."
+		],
+		"[python]": {
+			"editor.formatOnSave": true,
+			"editor.defaultFormatter": "ms-python.black-formatter",
+		},
+		"files.exclude": {
+			"**/__pycache__": true
+		},
+		"logViewer.watch": [
+			"/Users/patrick/ccmemory/instance/mcp.jsonl"
+		],
+		"black-formatter.importStrategy": "fromEnvironment",
+		"python.languageServer": "Pylance"
+
+	}
 }

@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title }} - ccmemory</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@0.9.4/css/bulma.min.css">
+    <style>
+        .sortable { cursor: pointer; user-select: none; }
+        .sortable:hover { text-decoration: underline; }
+        .sort-asc::after { content: " \25B2"; font-size: 0.7em; }
+        .sort-desc::after { content: " \25BC"; font-size: 0.7em; }
+        .truncate { max-width: 300px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
+        .truncate:hover { opacity: 0.8; }
+        .expanded { white-space: normal; max-width: none; }
+        .empty-state { padding: 3rem; text-align: center; }
+    </style>
+</head>
+<body>
+    <nav class="navbar is-dark">
+        <div class="navbar-brand">
+            <a class="navbar-item is-size-4" href="/?project={{ project }}">
+                <strong>ccmemory</strong>
+            </a>
+            <a role="button" class="navbar-burger" data-target="navMenu">
+                <span></span><span></span><span></span>
+            </a>
+        </div>
+        <div id="navMenu" class="navbar-menu">
+            <div class="navbar-start">
+                <a class="navbar-item" href="/decisions?project={{ project }}">Decisions</a>
+                <a class="navbar-item" href="/corrections?project={{ project }}">Corrections</a>
+                <a class="navbar-item" href="/insights?project={{ project }}">Insights</a>
+                <a class="navbar-item" href="/sessions?project={{ project }}">Sessions</a>
+                <div class="navbar-item has-dropdown is-hoverable">
+                    <a class="navbar-link">More</a>
+                    <div class="navbar-dropdown">
+                        <a class="navbar-item" href="/failed-approaches?project={{ project }}">Failed Approaches</a>
+                        <a class="navbar-item" href="/exceptions?project={{ project }}">Exceptions</a>
+                        <a class="navbar-item" href="/questions?project={{ project }}">Questions</a>
+                    </div>
+                </div>
+            </div>
+            <div class="navbar-end">
+                <div class="navbar-item">
+                    <div class="select is-info">
+                        <select id="project-select"></select>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <section class="section">
+        <div class="container">
+            <h1 class="title">{{ title }}</h1>
+
+            <div class="box" id="filter-box" style="display:none;">
+                <div class="field is-grouped" id="filters"></div>
+            </div>
+
+            <div class="table-container">
+                <table class="table is-fullwidth is-hoverable is-striped">
+                    <thead id="table-head"></thead>
+                    <tbody id="table-body"></tbody>
+                </table>
+            </div>
+
+            <div id="empty-state" class="box empty-state" style="display:none;">
+                <p class="is-size-5 has-text-grey">No {{ title | lower }} found.</p>
+                <p class="has-text-grey-light">Data will appear here as Claude detects patterns in your conversations.</p>
+            </div>
+
+            <div class="has-text-centered mt-4">
+                <span id="count-display" class="tag is-light"></span>
+            </div>
+        </div>
+    </section>
+
+    <script>
+        const project = "{{ project }}";
+        const pageType = "{{ page_type }}";
+
+        const columnConfig = {
+            decisions: [
+                {key: 'description', label: 'Description', sortable: true, truncate: true},
+                {key: 'rationale', label: 'Rationale', sortable: false, truncate: true},
+                {key: 'status', label: 'Status', sortable: true},
+                {key: 'timestamp', label: 'Date', sortable: true, format: 'date'}
+            ],
+            corrections: [
+                {key: 'wrong_belief', label: 'Was (Wrong)', sortable: false, truncate: true},
+                {key: 'right_belief', label: 'Is (Correct)', sortable: false, truncate: true},
+                {key: 'severity', label: 'Severity', sortable: true},
+                {key: 'timestamp', label: 'Date', sortable: true, format: 'date'}
+            ],
+            insights: [
+                {key: 'summary', label: 'Summary', sortable: false, truncate: true},
+                {key: 'category', label: 'Category', sortable: true},
+                {key: 'detail', label: 'Detail', sortable: false, truncate: true},
+                {key: 'timestamp', label: 'Date', sortable: true, format: 'date'}
+            ],
+            sessions: [
+                {key: 'started_at', label: 'Started', sortable: true, format: 'date'},
+                {key: 'project', label: 'Project', sortable: true},
+                {key: 'summary', label: 'Summary', sortable: false, truncate: true},
+                {key: 'branch', label: 'Branch', sortable: true}
+            ],
+            'failed-approaches': [
+                {key: 'approach', label: 'Approach', sortable: false, truncate: true},
+                {key: 'outcome', label: 'Outcome', sortable: false, truncate: true},
+                {key: 'lesson', label: 'Lesson', sortable: false, truncate: true},
+                {key: 'timestamp', label: 'Date', sortable: true, format: 'date'}
+            ],
+            exceptions: [
+                {key: 'rule_broken', label: 'Rule Broken', sortable: false, truncate: true},
+                {key: 'justification', label: 'Justification', sortable: false, truncate: true},
+                {key: 'scope', label: 'Scope', sortable: true},
+                {key: 'timestamp', label: 'Date', sortable: true, format: 'date'}
+            ],
+            questions: [
+                {key: 'question', label: 'Question', sortable: false, truncate: true},
+                {key: 'answer', label: 'Answer', sortable: false, truncate: true},
+                {key: 'context', label: 'Context', sortable: false, truncate: true},
+                {key: 'timestamp', label: 'Date', sortable: true, format: 'date'}
+            ]
+        };
+
+        const filterOptions = {
+            decisions: {status: ['curated', 'developmental']},
+            corrections: {severity: ['minor', 'significant', 'critical']},
+            insights: {category: ['realization', 'analysis', 'strategy', 'personal', 'synthesis']},
+            exceptions: {scope: ['one-time', 'conditional', 'new-precedent']}
+        };
+
+        let allData = [];
+        let currentSort = {key: 'timestamp', desc: true};
+        let currentFilter = {};
+
+        async function loadData() {
+            const params = new URLSearchParams({project, limit: 100});
+            Object.entries(currentFilter).forEach(([k, v]) => {
+                if (v) params.set(k, v);
+            });
+            const response = await fetch(`/api/${pageType}?${params}`);
+            allData = await response.json();
+            renderTable();
+            document.getElementById('count-display').textContent = `${allData.length} items`;
+            document.getElementById('empty-state').style.display = allData.length === 0 ? 'block' : 'none';
+            document.querySelector('.table-container').style.display = allData.length === 0 ? 'none' : 'block';
+        }
+
+        function renderTable() {
+            const columns = columnConfig[pageType];
+            if (!columns) return;
+
+            const thead = document.getElementById('table-head');
+            thead.innerHTML = '<tr>' + columns.map(col => {
+                const sortClass = col.sortable ? 'sortable' : '';
+                const activeSort = currentSort.key === col.key
+                    ? (currentSort.desc ? 'sort-desc' : 'sort-asc') : '';
+                return `<th class="${sortClass} ${activeSort}" data-key="${col.key}">${col.label}</th>`;
+            }).join('') + '</tr>';
+
+            const sorted = [...allData].sort((a, b) => {
+                let aVal = a[currentSort.key] || '';
+                let bVal = b[currentSort.key] || '';
+                if (currentSort.key === 'timestamp' || currentSort.key === 'started_at') {
+                    aVal = new Date(aVal).getTime() || 0;
+                    bVal = new Date(bVal).getTime() || 0;
+                }
+                const cmp = aVal < bVal ? -1 : aVal > bVal ? 1 : 0;
+                return currentSort.desc ? -cmp : cmp;
+            });
+
+            const tbody = document.getElementById('table-body');
+            tbody.innerHTML = sorted.map(row => {
+                return '<tr>' + columns.map(col => {
+                    let val = row[col.key] || '';
+                    if (col.format === 'date' && val) {
+                        val = new Date(val).toLocaleString();
+                    }
+                    const truncClass = col.truncate ? 'truncate' : '';
+                    const escaped = String(val).replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                    return `<td class="${truncClass}" title="${escaped}">${escaped}</td>`;
+                }).join('') + '</tr>';
+            }).join('');
+
+            tbody.querySelectorAll('.truncate').forEach(td => {
+                td.addEventListener('click', () => td.classList.toggle('expanded'));
+            });
+        }
+
+        function renderFilters() {
+            const opts = filterOptions[pageType];
+            if (!opts) return;
+
+            const box = document.getElementById('filter-box');
+            box.style.display = 'block';
+
+            let html = '';
+            for (const [key, values] of Object.entries(opts)) {
+                html += `
+                    <div class="control">
+                        <div class="select">
+                            <select id="filter-${key}">
+                                <option value="">All ${key}</option>
+                                ${values.map(v => `<option value="${v}">${v}</option>`).join('')}
+                            </select>
+                        </div>
+                    </div>`;
+            }
+            document.getElementById('filters').innerHTML = html;
+
+            for (const key of Object.keys(opts)) {
+                document.getElementById(`filter-${key}`).addEventListener('change', e => {
+                    currentFilter[key] = e.target.value;
+                    loadData();
+                });
+            }
+        }
+
+        document.getElementById('table-head').addEventListener('click', e => {
+            const th = e.target.closest('th');
+            if (!th || !th.classList.contains('sortable')) return;
+            const key = th.dataset.key;
+            if (currentSort.key === key) {
+                currentSort.desc = !currentSort.desc;
+            } else {
+                currentSort = {key, desc: true};
+            }
+            renderTable();
+        });
+
+        // Navbar burger toggle
+        document.querySelector('.navbar-burger').addEventListener('click', () => {
+            document.querySelector('.navbar-burger').classList.toggle('is-active');
+            document.getElementById('navMenu').classList.toggle('is-active');
+        });
+
+        // Project selector
+        async function loadProjects() {
+            const select = document.getElementById('project-select');
+            const response = await fetch('/api/projects');
+            const projects = await response.json();
+            // Auto-select first project if none specified
+            const selectedProject = project || (projects.length > 0 ? projects[0] : '');
+            if (!project && selectedProject) {
+                window.location.href = `/${pageType}?project=${encodeURIComponent(selectedProject)}`;
+                return;
+            }
+            select.innerHTML = projects.map(p =>
+                `<option value="${p}" ${p === selectedProject ? 'selected' : ''}>${p}</option>`
+            ).join('');
+            select.addEventListener('change', () => {
+                window.location.href = `/${pageType}?project=${encodeURIComponent(select.value)}`;
+            });
+        }
+
+        loadProjects();
+        renderFilters();
+        loadData();
+    </script>
+</body>
+</html>

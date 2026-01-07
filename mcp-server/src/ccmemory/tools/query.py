@@ -1,6 +1,5 @@
 """MCP tools for querying the context graph."""
 
-import os
 from typing import Optional
 
 from mcp.server.fastmcp import FastMCP
@@ -8,7 +7,16 @@ from mcp.server.fastmcp import FastMCP
 from ..graph import getClient
 from ..embeddings import getEmbedding
 from ..reranker import rerank
+from ..context import getCurrentProject
 from .logging import logTool
+
+
+def _getProject() -> str:
+    """Get current project or raise error."""
+    project = getCurrentProject()
+    if not project:
+        raise ValueError("No active session. Start a Claude Code session first.")
+    return project
 
 
 def registerQueryTools(mcp: FastMCP):
@@ -24,7 +32,7 @@ def registerQueryTools(mcp: FastMCP):
             include_team: Whether to include curated team decisions
         """
         client = getClient()
-        project = os.path.basename(os.getcwd())
+        project = _getProject()
         results = client.queryRecent(project, limit=limit, include_team=include_team)
 
         formatted = []
@@ -54,7 +62,7 @@ def registerQueryTools(mcp: FastMCP):
             include_team: Whether to include curated team decisions
         """
         client = getClient()
-        project = os.path.basename(os.getcwd())
+        project = _getProject()
         results = client.searchPrecedent(
             query, project, limit=limit, include_team=include_team
         )
@@ -76,7 +84,7 @@ def registerQueryTools(mcp: FastMCP):
             include_team: Whether to include curated team decisions
         """
         client = getClient()
-        project = os.path.basename(os.getcwd())
+        project = _getProject()
 
         embedding = getEmbedding(query)
         raw_limit = min(limit * 2, 20)
@@ -114,7 +122,7 @@ def registerQueryTools(mcp: FastMCP):
             limit: Maximum results
         """
         client = getClient()
-        project = os.path.basename(os.getcwd())
+        project = _getProject()
 
         # Combine full-text and semantic search
         text_results = client.searchPrecedent(topic, project, limit=limit)
@@ -185,7 +193,7 @@ def registerQueryTools(mcp: FastMCP):
             days: Consider decisions older than this many days as stale
         """
         client = getClient()
-        project = os.path.basename(os.getcwd())
+        project = _getProject()
         results = client.queryStaleDecisions(project, days=days)
 
         return {"project": project, "threshold_days": days, "stale_decisions": results}
@@ -199,7 +207,7 @@ def registerQueryTools(mcp: FastMCP):
             limit: Maximum results
         """
         client = getClient()
-        project = os.path.basename(os.getcwd())
+        project = _getProject()
         results = client.queryFailedApproaches(project, limit=limit)
 
         return {"project": project, "failed_approaches": results}
@@ -213,7 +221,7 @@ def registerQueryTools(mcp: FastMCP):
             branch: Only promote decisions from this branch (optional)
         """
         client = getClient()
-        project = os.path.basename(os.getcwd())
+        project = _getProject()
         client.promoteDecisions(project, branch=branch)
 
         return {"project": project, "branch": branch, "status": "promoted"}
@@ -223,5 +231,5 @@ def registerQueryTools(mcp: FastMCP):
     async def getMetrics() -> dict:
         """Get all context graph metrics for the current project."""
         client = getClient()
-        project = os.path.basename(os.getcwd())
+        project = _getProject()
         return client.getAllMetrics(project)

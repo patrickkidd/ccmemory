@@ -3,11 +3,12 @@
 ## TL;DR
 
 ```bash
-# 1. Start Neo4j
+# 1. Start Neo4j + Ollama
 docker-compose up -d
 
-# 2. Install package in dev mode
-cd mcp-server && uv pip install -e ".[dev]"
+# 2. Install workspace (includes dashboard + MCP server)
+uv venv && source .venv/bin/activate
+uv pip install -e ".[dev]"
 
 # 3. Run Claude Code with local plugin
 claude --plugin-dir /path/to/ccmemory
@@ -23,6 +24,7 @@ Changes to Python code take effect on next Claude Code restart. No hot-reload—
 - Python 3.10+
 - [uv](https://docs.astral.sh/uv/) (`curl -LsSf https://astral.sh/uv/install.sh | sh`)
 - Claude Code CLI
+- VSCode (for debug targets)
 
 ## Full Setup
 
@@ -32,12 +34,10 @@ Changes to Python code take effect on next Claude Code restart. No hot-reload—
 git clone https://github.com/patrickkidd/ccmemory
 cd ccmemory
 
-# Create venv and install
-cd mcp-server
+# Create venv and install workspace
 uv venv
 source .venv/bin/activate
 uv pip install -e ".[dev]"
-cd ..
 ```
 
 ### 2. Start Neo4j
@@ -124,20 +124,37 @@ ccmemory stale --days 30     # Find old decisions
 ccmemory dashboard           # Start web UI (localhost:8765)
 ```
 
-## Debugging
+## Debugging with VSCode
 
-### MCP Server
+Two debug targets are available in `.vscode/launch.json`:
 
-Run the MCP server directly for debugging:
+- **Dashboard (debug)** — Flask dashboard on port 8888 (gevent server, no auto-reload)
+- **MCP Server (debug)** — MCP HTTP server on port 8766
+
+Both targets set `PYTHONUNBUFFERED=1` and `justMyCode=false` for full debugging.
+
+To use:
+1. Open the project in VSCode
+2. Go to Run and Debug (Cmd+Shift+D)
+3. Select target from dropdown
+4. Press F5
+
+### Log Files
 
 ```bash
-cd mcp-server/src
-python -m ccmemory.server
+# MCP server log (JSON lines, in project root)
+tail -f instance/mcp.jsonl
+
+# Hook activity log (user-global, written by plugin hooks)
+tail -f ~/.ccmemory/hooks.log
+
+# Neo4j query log (when running via docker)
+tail -f instance/neo4j.log
 ```
 
 ### Hooks
 
-Hooks run as subprocesses. Add logging to hook scripts and check Claude Code's output.
+Hooks run as subprocesses from any project directory and write to `~/.ccmemory/hooks.log`.
 
 ### Neo4j
 

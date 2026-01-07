@@ -16,6 +16,7 @@ from .tools.query import registerQueryTools
 from .tools.reference import registerReferenceTools
 from .tools.backfill import registerBackfillTools
 from . import hooks
+from . import activitylog  # noqa: F401 - sets up activity log handler
 
 
 class JsonFormatter(logging.Formatter):
@@ -39,7 +40,7 @@ class JsonFormatter(logging.Formatter):
 
 
 def setupLogging():
-    log_path = os.getenv("CCMEMORY_LOG_PATH", "/logs/mcp.log")
+    log_path = os.getenv("CCMEMORY_MCP_LOG", "instance/mcp.jsonl")
     log_dir = os.path.dirname(log_path)
     if log_dir and not os.path.exists(log_dir):
         os.makedirs(log_dir, exist_ok=True)
@@ -49,11 +50,11 @@ def setupLogging():
 
     logger = logging.getLogger("ccmemory")
     logger.addHandler(handler)
-    logger.setLevel(logging.INFO)
+    logger.setLevel(logging.DEBUG)
     return logger
 
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.DEBUG)
 logger = setupLogging()
 
 mcp = FastMCP("ccmemory")
@@ -69,44 +70,23 @@ async def hookSessionStart(request: Request) -> JSONResponse:
     data = await request.json()
     project = data.get("cwd", "").rsplit("/", 1)[-1]
     session_id = data.get("session_id", "")
+    logger.info(f"<- POST /hooks/session-start (project={project})")
+    logger.debug(f"session_id={session_id}")
     try:
         result = hooks.handleSessionStart(
             session_id=session_id,
             cwd=data.get("cwd", ""),
             conversation_stems=data.get("conversation_stems"),
         )
-        logger.info(
-            "",
-            extra={
-                "cat": "hook",
-                "event": "session-start",
-                "project": project,
-                "duration_ms": int((time.time() - start) * 1000),
-                "data": {"session_id": session_id},
-            },
-        )
+        duration = int((time.time() - start) * 1000)
+        context_len = len(result.get("context", ""))
+        logger.info(f"-> 200 (context: {context_len} chars, {duration}ms)")
         return JSONResponse(result)
     except (ValueError, KeyError) as e:
-        logger.warning(
-            str(e),
-            extra={
-                "cat": "hook",
-                "event": "session-start",
-                "project": project,
-                "data": {"session_id": session_id},
-            },
-        )
+        logger.warning(f"-> 400: {e}")
         return JSONResponse({"error": str(e)}, status_code=400)
     except Exception as e:
-        logger.exception(
-            "",
-            extra={
-                "cat": "hook",
-                "event": "session-start",
-                "project": project,
-                "data": {"session_id": session_id},
-            },
-        )
+        logger.exception(f"-> 500: {e}")
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
@@ -115,47 +95,22 @@ async def hookMessageResponse(request: Request) -> JSONResponse:
     data = await request.json()
     project = data.get("cwd", "").rsplit("/", 1)[-1]
     session_id = data.get("session_id", "")
+    logger.info(f"<- POST /hooks/message-response (project={project})")
     try:
         result = hooks.handleMessageResponse(
             session_id=session_id,
             transcript_path=data.get("transcript_path", ""),
             cwd=data.get("cwd", ""),
         )
-        logger.info(
-            "",
-            extra={
-                "cat": "hook",
-                "event": "message-response",
-                "project": project,
-                "duration_ms": int((time.time() - start) * 1000),
-                "data": {
-                    "session_id": session_id,
-                    "detections": result.get("detections", 0),
-                },
-            },
-        )
+        duration = int((time.time() - start) * 1000)
+        detections = result.get("detections", 0)
+        logger.info(f"-> 200 (detections={detections}, {duration}ms)")
         return JSONResponse(result)
     except (ValueError, KeyError) as e:
-        logger.warning(
-            str(e),
-            extra={
-                "cat": "hook",
-                "event": "message-response",
-                "project": project,
-                "data": {"session_id": session_id},
-            },
-        )
+        logger.warning(f"-> 400: {e}")
         return JSONResponse({"error": str(e)}, status_code=400)
     except Exception as e:
-        logger.exception(
-            "",
-            extra={
-                "cat": "hook",
-                "event": "message-response",
-                "project": project,
-                "data": {"session_id": session_id},
-            },
-        )
+        logger.exception(f"-> 500: {e}")
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
@@ -164,44 +119,21 @@ async def hookSessionEnd(request: Request) -> JSONResponse:
     data = await request.json()
     project = data.get("cwd", "").rsplit("/", 1)[-1]
     session_id = data.get("session_id", "")
+    logger.info(f"<- POST /hooks/session-end (project={project})")
     try:
         result = hooks.handleSessionEnd(
             session_id=session_id,
             transcript_path=data.get("transcript_path"),
             cwd=data.get("cwd", ""),
         )
-        logger.info(
-            "",
-            extra={
-                "cat": "hook",
-                "event": "session-end",
-                "project": project,
-                "duration_ms": int((time.time() - start) * 1000),
-                "data": {"session_id": session_id},
-            },
-        )
+        duration = int((time.time() - start) * 1000)
+        logger.info(f"-> 200 ({duration}ms)")
         return JSONResponse(result)
     except (ValueError, KeyError) as e:
-        logger.warning(
-            str(e),
-            extra={
-                "cat": "hook",
-                "event": "session-end",
-                "project": project,
-                "data": {"session_id": session_id},
-            },
-        )
+        logger.warning(f"-> 400: {e}")
         return JSONResponse({"error": str(e)}, status_code=400)
     except Exception as e:
-        logger.exception(
-            "",
-            extra={
-                "cat": "hook",
-                "event": "session-end",
-                "project": project,
-                "data": {"session_id": session_id},
-            },
-        )
+        logger.exception(f"-> 500: {e}")
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
@@ -219,6 +151,8 @@ async def bulkImport(request: Request) -> JSONResponse:
 
     if not project:
         return JSONResponse({"error": "project required"}, status_code=400)
+
+    logger.info(f"<- POST /api/bulk-import (project={project}, count={len(conversations)})")
 
     stats = {
         "processed": 0,
@@ -248,16 +182,8 @@ async def bulkImport(request: Request) -> JSONResponse:
             logger.warning(f"Bulk import error: {e}")
             stats["skipped"] += 1
 
-    logger.info(
-        "",
-        extra={
-            "cat": "tool",
-            "event": "bulk-import",
-            "project": project,
-            "duration_ms": int((time.time() - start) * 1000),
-            "data": stats,
-        },
-    )
+    duration = int((time.time() - start) * 1000)
+    logger.info(f"-> 200 (processed={stats['processed']}, skipped={stats['skipped']}, {duration}ms)")
     return JSONResponse(stats)
 
 
@@ -276,6 +202,7 @@ def main():
         GraphClient(init_schema=True)
 
     if args.http:
+        logger.info(f"Starting HTTP server on port {args.port}")
         hook_routes = [
             Route("/health", healthCheck, methods=["GET"]),
             Route("/hooks/session-start", hookSessionStart, methods=["POST"]),

@@ -161,6 +161,7 @@ def _indexFile(filepath: Path, project_root: str, client=None) -> int:
 
 
 from .logging import logTool
+from ..context import getCurrentProject
 
 
 def registerReferenceTools(mcp: FastMCP):
@@ -170,6 +171,8 @@ def registerReferenceTools(mcp: FastMCP):
     @logTool
     async def cacheUrl(url: str) -> dict:
         """Cache a URL to the reference knowledge tree.
+
+        Note: This tool requires running locally (not in Docker container).
 
         Args:
             url: The URL to fetch and cache
@@ -182,6 +185,8 @@ def registerReferenceTools(mcp: FastMCP):
     async def cachePdf(path: str) -> dict:
         """Cache a PDF to the reference knowledge tree.
 
+        Note: This tool requires running locally (not in Docker container).
+
         Args:
             path: Path to the PDF file
         """
@@ -191,7 +196,10 @@ def registerReferenceTools(mcp: FastMCP):
     @mcp.tool()
     @logTool
     async def indexReference() -> dict:
-        """Rebuild the reference knowledge index from all markdown files."""
+        """Rebuild the reference knowledge index from all markdown files.
+
+        Note: This tool requires running locally (not in Docker container).
+        """
         project_root = os.getcwd()
         count = _indexAll(project_root)
         return {"indexed_chunks": count}
@@ -205,8 +213,9 @@ def registerReferenceTools(mcp: FastMCP):
             query: Search query
             limit: Maximum results
         """
-        project_root = os.getcwd()
-        project = os.path.basename(project_root)
+        project = getCurrentProject()
+        if not project:
+            return {"error": "No active session. Start a Claude Code session first."}
 
         embedding = getEmbedding(query)
         client = getClient()
@@ -227,7 +236,10 @@ def registerReferenceTools(mcp: FastMCP):
     @mcp.tool()
     @logTool
     async def listReferences() -> dict:
-        """List all cached reference files."""
+        """List all cached reference files.
+
+        Note: This tool requires running locally (not in Docker container).
+        """
         project_root = os.getcwd()
         ref_path = _getReferencePath(project_root)
 

@@ -4,6 +4,7 @@ import asyncio
 from datetime import datetime
 
 from .graph import getClient
+from .context import setCurrentSession, clearCurrentSession
 from .detection.detector import detectAll
 from .detection.schemas import (
     Correction,
@@ -38,6 +39,8 @@ def handleSessionStart(
 ) -> dict:
     project = cwd.rsplit("/", 1)[-1] if "/" in cwd else cwd
     client = getClient()
+
+    setCurrentSession(project, session_id)
 
     client.createSession(
         session_id=session_id, project=project, started_at=datetime.now().isoformat()
@@ -272,6 +275,7 @@ def handleMessageResponse(session_id: str, transcript_path: str, cwd: str) -> di
 def handleSessionEnd(session_id: str, transcript_path: str | None, cwd: str) -> dict:
     client = getClient()
     project = cwd.rsplit("/", 1)[-1] if "/" in cwd else cwd
+    clearCurrentSession()
 
     transcript = ""
     if transcript_path:

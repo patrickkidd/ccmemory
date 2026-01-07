@@ -1,29 +1,32 @@
 """Flask dashboard for ccmemory."""
 
-from gevent import monkey
+import os
 
-monkey.patch_all()
+if os.getenv("GEVENT_SUPPORT") == "True":
+    from gevent import monkey
+    monkey.patch_all()
 
 import hashlib
 import io
 import json
-import os
 import time
 import uuid
 import zipfile
 from datetime import datetime
 
 from flask import Flask, render_template, jsonify, request
-from geventwebsocket import WebSocketError
-from geventwebsocket.handler import WebSocketHandler
 from neo4j import GraphDatabase
+
+if os.getenv("GEVENT_SUPPORT") == "True":
+    from geventwebsocket import WebSocketError
+    from geventwebsocket.handler import WebSocketHandler
 
 app = Flask(__name__)
 app.debug = False
 app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024  # 50MB max upload
 
-MCP_LOG = os.getenv("CCMEMORY_MCP_LOG", "/logs/mcp.log")
-NEO4J_LOG = os.getenv("CCMEMORY_NEO4J_LOG", "/logs/query.log")
+MCP_LOG = os.getenv("CCMEMORY_MCP_LOG", "instance/mcp.jsonl")
+NEO4J_LOG = os.getenv("CCMEMORY_NEO4J_LOG", "instance/neo4j.log")
 
 _driver = None
 
@@ -57,6 +60,37 @@ def index():
     project = request.args.get("project", "")
     team = request.args.get("team", "").lower() == "true"
     return render_template("dashboard.html", project=project, team=team)
+
+
+_DETAIL_PAGE_CONFIG = {
+    "decisions": {"title": "Decisions"},
+    "corrections": {"title": "Corrections"},
+    "insights": {"title": "Insights"},
+    "sessions": {"title": "Sessions"},
+    "failed-approaches": {"title": "Failed Approaches"},
+    "exceptions": {"title": "Exceptions"},
+    "questions": {"title": "Questions"},
+}
+
+
+def _detail_page(page_type: str):
+    """Create detail page handler for a given page type."""
+    def view():
+        project = request.args.get("project", "")
+        config = _DETAIL_PAGE_CONFIG.get(page_type, {})
+        return render_template(
+            "detailpage.html",
+            project=project,
+            page_type=page_type,
+            title=config.get("title", page_type.title()),
+        )
+    view.__name__ = f"{page_type}_view"
+    return view
+
+
+for page_type in _DETAIL_PAGE_CONFIG.keys():
+    route = f"/{page_type}"
+    app.add_url_rule(route, f"{page_type}_view", _detail_page(page_type))
 
 
 @app.route("/api/metrics")
@@ -258,6 +292,69 @@ def sessions():
             limit=limit,
         )
         return jsonify([serialize_node(dict(r["s"])) for r in result])
+
+
+@app.route("/api/exceptions")
+def exceptions():
+    project = request.args.get("project", "")
+    scope = request.args.get("scope")
+    limit = int(request.args.get("limit", 50))
+    driver = getDriver()
+
+    with driver.session() as session:
+        if scope:
+            result = session.run(
+                """
+                MATCH (e:Exception {project: $project, scope: $scope})
+                RETURN e ORDER BY e.timestamp DESC LIMIT $limit
+                """,
+                project=project,
+                scope=scope,
+                limit=limit,
+            )
+        else:
+            result = session.run(
+                """
+                MATCH (e:Exception {project: $project})
+                RETURN e ORDER BY e.timestamp DESC LIMIT $limit
+                """,
+                project=project,
+                limit=limit,
+            )
+        return jsonify([serialize_node(dict(r["e"])) for r in result])
+
+
+@app.route("/api/questions")
+def questions():
+    project = request.args.get("project", "")
+    limit = int(request.args.get("limit", 50))
+    driver = getDriver()
+
+    with driver.session() as session:
+        result = session.run(
+            """
+            MATCH (q:Question {project: $project})
+            RETURN q ORDER BY q.timestamp DESC LIMIT $limit
+            """,
+            project=project,
+            limit=limit,
+        )
+        return jsonify([serialize_node(dict(r["q"])) for r in result])
+
+
+@app.route("/api/projects")
+def projects():
+    driver = getDriver()
+    with driver.session() as session:
+        result = session.run(
+            """
+            MATCH (n)
+            WHERE n.project IS NOT NULL AND n.project <> ''
+            RETURN DISTINCT n.project as project
+            ORDER BY project
+            """
+        )
+        return jsonify([r["project"] for r in result])
 
 
 @app.route("/api/clear", methods=["DELETE"])

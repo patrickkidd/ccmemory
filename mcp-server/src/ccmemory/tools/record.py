@@ -1,6 +1,5 @@
 """MCP tools for recording context to the graph."""
 
-import os
 import uuid
 from typing import Optional
 
@@ -8,6 +7,7 @@ from mcp.server.fastmcp import FastMCP
 
 from ..graph import getClient
 from ..embeddings import getEmbedding
+from ..context import getCurrentProject, getCurrentSessionId
 from .logging import logTool
 
 
@@ -52,19 +52,20 @@ def registerRecordTools(mcp: FastMCP):
         kwargs["detection_method"] = "explicit_command"
         kwargs["detection_confidence"] = 1.0
 
-        if session_id:
+        effective_session = session_id or getCurrentSessionId()
+        if effective_session:
             client.createDecision(
                 decision_id=decision_id,
-                session_id=session_id,
+                session_id=effective_session,
                 description=description,
                 embedding=embedding,
                 **kwargs
             )
         else:
-            # Create without session link
-            from neo4j import GraphDatabase
+            project = getCurrentProject()
+            if not project:
+                return {"error": "No active session. Start a Claude Code session first."}
             driver = client.driver
-            project = os.path.basename(os.getcwd())
             with driver.session() as db_session:
                 db_session.run(
                     """
@@ -115,18 +116,21 @@ def registerRecordTools(mcp: FastMCP):
             "detection_confidence": 1.0
         }
 
-        if session_id:
+        effective_session = session_id or getCurrentSessionId()
+        if effective_session:
             client.createCorrection(
                 correction_id=correction_id,
-                session_id=session_id,
+                session_id=effective_session,
                 wrong_belief=wrong_belief,
                 right_belief=right_belief,
                 embedding=embedding,
                 **kwargs
             )
         else:
+            project = getCurrentProject()
+            if not project:
+                return {"error": "No active session. Start a Claude Code session first."}
             driver = client.driver
-            project = os.path.basename(os.getcwd())
             with driver.session() as db_session:
                 db_session.run(
                     """
@@ -178,18 +182,21 @@ def registerRecordTools(mcp: FastMCP):
             "detection_confidence": 1.0
         }
 
-        if session_id:
+        effective_session = session_id or getCurrentSessionId()
+        if effective_session:
             client.createException(
                 exception_id=exception_id,
-                session_id=session_id,
+                session_id=effective_session,
                 rule_broken=rule_broken,
                 justification=justification,
                 embedding=embedding,
                 **kwargs
             )
         else:
+            project = getCurrentProject()
+            if not project:
+                return {"error": "No active session. Start a Claude Code session first."}
             driver = client.driver
-            project = os.path.basename(os.getcwd())
             with driver.session() as db_session:
                 db_session.run(
                     """
@@ -246,18 +253,21 @@ def registerRecordTools(mcp: FastMCP):
         if implications:
             kwargs["implications"] = implications
 
-        if session_id:
+        effective_session = session_id or getCurrentSessionId()
+        if effective_session:
             client.createInsight(
                 insight_id=insight_id,
-                session_id=session_id,
+                session_id=effective_session,
                 category=category,
                 summary=summary,
                 embedding=embedding,
                 **kwargs
             )
         else:
+            project = getCurrentProject()
+            if not project:
+                return {"error": "No active session. Start a Claude Code session first."}
             driver = client.driver
-            project = os.path.basename(os.getcwd())
             with driver.session() as db_session:
                 db_session.run(
                     """
@@ -307,17 +317,20 @@ def registerRecordTools(mcp: FastMCP):
         if context:
             kwargs["context"] = context
 
-        if session_id:
+        effective_session = session_id or getCurrentSessionId()
+        if effective_session:
             client.createQuestion(
                 question_id=question_id,
-                session_id=session_id,
+                session_id=effective_session,
                 question=question,
                 answer=answer,
                 **kwargs
             )
         else:
+            project = getCurrentProject()
+            if not project:
+                return {"error": "No active session. Start a Claude Code session first."}
             driver = client.driver
-            project = os.path.basename(os.getcwd())
             with driver.session() as db_session:
                 db_session.run(
                     """
@@ -363,18 +376,21 @@ def registerRecordTools(mcp: FastMCP):
             "detection_confidence": 1.0
         }
 
-        if session_id:
+        effective_session = session_id or getCurrentSessionId()
+        if effective_session:
             client.createFailedApproach(
                 fa_id=fa_id,
-                session_id=session_id,
+                session_id=effective_session,
                 approach=approach,
                 outcome=outcome,
                 lesson=lesson,
                 **kwargs
             )
         else:
+            project = getCurrentProject()
+            if not project:
+                return {"error": "No active session. Start a Claude Code session first."}
             driver = client.driver
-            project = os.path.basename(os.getcwd())
             with driver.session() as db_session:
                 db_session.run(
                     """
@@ -428,17 +444,20 @@ def registerRecordTools(mcp: FastMCP):
         if context:
             kwargs["context"] = context
 
-        if session_id:
+        effective_session = session_id or getCurrentSessionId()
+        if effective_session:
             client.createReference(
                 ref_id=ref_id,
-                session_id=session_id,
+                session_id=effective_session,
                 ref_type=ref_type,
                 uri=uri,
                 **kwargs
             )
         else:
+            project = getCurrentProject()
+            if not project:
+                return {"error": "No active session. Start a Claude Code session first."}
             driver = client.driver
-            project = os.path.basename(os.getcwd())
             with driver.session() as db_session:
                 db_session.run(
                     """

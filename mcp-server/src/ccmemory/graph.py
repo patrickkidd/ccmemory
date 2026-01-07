@@ -2,9 +2,12 @@ import os
 import uuid
 import json
 import logging
+import time
 from pathlib import Path
 from typing import Optional
 from neo4j import GraphDatabase
+
+logger = logging.getLogger("ccmemory.graph")
 
 # Suppress Neo4j notifications about missing relationship types
 logging.getLogger("neo4j.notifications").setLevel(logging.ERROR)
@@ -50,6 +53,8 @@ class GraphClient:
         started_at: str,
         branch: Optional[str] = None,
     ):
+        logger.debug(f"createSession(project={project}, id={session_id[:12]}...)")
+        start = time.time()
         with self.driver.session() as session:
             session.run(
                 """
@@ -65,6 +70,8 @@ class GraphClient:
                 user_id=self.user_id,
                 branch=branch,
             )
+        duration = int((time.time() - start) * 1000)
+        logger.info(f"Created Session id={session_id[:12]}... ({duration}ms)")
 
     def endSession(self, session_id: str, transcript: str, summary: str):
         with self.driver.session() as session:
@@ -133,6 +140,8 @@ class GraphClient:
         embedding: list,
         **kwargs,
     ):
+        logger.debug(f"createDecision(id={decision_id[:12]}...)")
+        start = time.time()
         with self.driver.session() as session:
             session.run(
                 """
@@ -153,6 +162,8 @@ class GraphClient:
                 embedding=embedding,
                 props=kwargs,
             )
+        duration = int((time.time() - start) * 1000)
+        logger.info(f"Created Decision id={decision_id[:12]}... ({duration}ms)")
 
     def createCorrection(
         self,
@@ -163,6 +174,8 @@ class GraphClient:
         embedding: list,
         **kwargs,
     ):
+        logger.debug(f"createCorrection(id={correction_id[:12]}...)")
+        start = time.time()
         with self.driver.session() as session:
             session.run(
                 """
@@ -184,6 +197,8 @@ class GraphClient:
                 embedding=embedding,
                 props=kwargs,
             )
+        duration = int((time.time() - start) * 1000)
+        logger.info(f"Created Correction id={correction_id[:12]}... ({duration}ms)")
 
     def createException(
         self,
@@ -194,6 +209,8 @@ class GraphClient:
         embedding: list,
         **kwargs,
     ):
+        logger.debug(f"createException(id={exception_id[:12]}...)")
+        start = time.time()
         with self.driver.session() as session:
             session.run(
                 """
@@ -215,6 +232,8 @@ class GraphClient:
                 embedding=embedding,
                 props=kwargs,
             )
+        duration = int((time.time() - start) * 1000)
+        logger.info(f"Created Exception id={exception_id[:12]}... ({duration}ms)")
 
     def createInsight(
         self,
@@ -225,6 +244,8 @@ class GraphClient:
         embedding: list,
         **kwargs,
     ):
+        logger.debug(f"createInsight(id={insight_id[:12]}...)")
+        start = time.time()
         with self.driver.session() as session:
             session.run(
                 """
@@ -246,10 +267,14 @@ class GraphClient:
                 embedding=embedding,
                 props=kwargs,
             )
+        duration = int((time.time() - start) * 1000)
+        logger.info(f"Created Insight id={insight_id[:12]}... ({duration}ms)")
 
     def createQuestion(
         self, question_id: str, session_id: str, question: str, answer: str, **kwargs
     ):
+        logger.debug(f"createQuestion(id={question_id[:12]}...)")
+        start = time.time()
         with self.driver.session() as session:
             session.run(
                 """
@@ -269,6 +294,8 @@ class GraphClient:
                 answer=answer,
                 props=kwargs,
             )
+        duration = int((time.time() - start) * 1000)
+        logger.info(f"Created Question id={question_id[:12]}... ({duration}ms)")
 
     def createFailedApproach(
         self,
@@ -279,6 +306,8 @@ class GraphClient:
         lesson: str,
         **kwargs,
     ):
+        logger.debug(f"createFailedApproach(id={fa_id[:12]}...)")
+        start = time.time()
         with self.driver.session() as session:
             session.run(
                 """
@@ -300,10 +329,14 @@ class GraphClient:
                 lesson=lesson,
                 props=kwargs,
             )
+        duration = int((time.time() - start) * 1000)
+        logger.info(f"Created FailedApproach id={fa_id[:12]}... ({duration}ms)")
 
     def createReference(
         self, ref_id: str, session_id: str, ref_type: str, uri: str, **kwargs
     ):
+        logger.debug(f"createReference(id={ref_id[:12]}..., type={ref_type})")
+        start = time.time()
         with self.driver.session() as session:
             session.run(
                 """
@@ -323,11 +356,15 @@ class GraphClient:
                 uri=uri,
                 props=kwargs,
             )
+        duration = int((time.time() - start) * 1000)
+        logger.info(f"Created Reference id={ref_id[:12]}... ({duration}ms)")
 
     # === Domain 1: Query Functions ===
 
     def queryRecent(self, project: str, limit: int = 20, include_team: bool = True):
         """Get recent context for a project."""
+        logger.debug(f"queryRecent(project={project}, limit={limit})")
+        start = time.time()
         with self.driver.session() as session:
             if include_team and self.user_id:
                 visibility = "(n.status = 'curated' OR n.user_id = $user_id)"
@@ -346,7 +383,10 @@ class GraphClient:
                 user_id=self.user_id,
                 limit=limit,
             )
-            return [dict(record) for record in result]
+            records = [dict(record) for record in result]
+        duration = int((time.time() - start) * 1000)
+        logger.debug(f"queryRecent returned {len(records)} items ({duration}ms)")
+        return records
 
     def searchPrecedent(
         self, query: str, project: str, limit: int = 10, include_team: bool = True
