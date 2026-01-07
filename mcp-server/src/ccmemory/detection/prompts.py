@@ -18,10 +18,11 @@ DETECTION TYPES
 Extract items into these categories. Most exchanges yield NOTHING — only extract
 when clearly present. Each item needs a confidence score (0.0-1.0).
 
-**DECISION**: User makes an explicit choice or sets direction.
+**DECISION**: User makes an explicit choice between options or sets task direction.
 - "Let's go with X", "I'll use Y", "That sounds good, do it"
-- "We should always...", "From now on..."
+- Choosing between alternatives for the current task
 - NOT: Questions, hypotheticals, or Claude's suggestions
+- NOT: Establishing project-wide rules (use PROJECT_FACT)
 
 **CORRECTION**: User corrects Claude's misunderstanding.
 - "No, that's wrong", "Actually...", "It's X not Y"
@@ -49,15 +50,26 @@ when clearly present. Each item needs a confidence score (0.0-1.0).
 - Must capture what failed and why
 - NOT: Hypothetical problems or general concerns
 
+**PROJECT_FACT**: User states a project convention, rule, requirement, or pattern.
+- "We use X", "This project uses Y", "Our convention is..."
+- "Tests are in the tests/ folder", "We always use camelCase"
+- "All changes must include tests", "Never commit without passing tests"
+- Project-wide rules and requirements that apply going forward
+- Categories: tool, pattern, convention, environment, constraint, workflow
+- KEY DISTINCTION from DECISION:
+  * DECISION: "Let's use pytest for this" (choosing for current task)
+  * PROJECT_FACT: "We use pytest" or "All code must have tests" (project rule)
+- NOT: Personal preferences, Claude's observations, or hypotheticals
+
 ═══════════════════════════════════════════════════════════════════════════════
 EXTRACTION RULES
 ═══════════════════════════════════════════════════════════════════════════════
 
-1. **SPARSE OUTPUT**: Return empty lists when nothing matches. Most exchanges
-   have no detections. Don't force-fit marginal cases.
+1. **DETECT WHEN PRESENT**: Extract items when they clearly match. Don't
+   force-fit marginal cases, but do capture clear statements of rules,
+   conventions, decisions, or corrections.
 
-2. **HIGH BAR**: Only extract items with confidence >= 0.7. If unsure, don't
-   include it.
+2. **CONFIDENCE**: Use >= 0.7 for clear matches, >= 0.8 for very explicit ones.
 
 3. **NO DUPLICATES**: One item per distinct piece of information. Don't extract
    the same thing as both a decision and an insight.
@@ -69,6 +81,7 @@ EXTRACTION RULES
    - Insight: summary (the insight itself)
    - Question: question, answer (the Q&A pair)
    - FailedApproach: approach, outcome (what failed and result)
+   - ProjectFact: fact, category (the convention and its type)
 
 ═══════════════════════════════════════════════════════════════════════════════
 EXAMPLES
@@ -89,7 +102,7 @@ WHY WRONG: "Sounds good" is routine acknowledgment, not a memorable decision.
 The user isn't choosing between alternatives or setting direction.
 
 ✅ CORRECT:
-{{"decisions": [], "corrections": [], "exceptions": [], "insights": [], "questions": [], "failedApproaches": []}}
+{{"decisions": [], "corrections": [], "exceptions": [], "insights": [], "questions": [], "failedApproaches": [], "projectFacts": []}}
 
 # ─────────────────────────────────────────────────────────────────────────────
 # [DECISION_EXPLICIT_CHOICE]
@@ -106,7 +119,25 @@ User: "Let's go with Redis. It's simpler for our use case and we don't need pers
     "description": "Use Redis for caching instead of PostgreSQL",
     "rationale": "Simpler, persistence not needed"
   }}],
-  "corrections": [], "exceptions": [], "insights": [], "questions": [], "failedApproaches": []
+  "corrections": [], "exceptions": [], "insights": [], "questions": [], "failedApproaches": [], "projectFacts": []
+}}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# [PROJECT_FACT_SETTING_RULE]
+# User establishes a project-wide rule or requirement
+# ─────────────────────────────────────────────────────────────────────────────
+
+Claude: "I'm ready to help with your project."
+User: "All changes must include tests and those tests must pass before claiming done."
+
+✅ CORRECT:
+{{
+  "projectFacts": [{{
+    "confidence": 0.85,
+    "category": "workflow",
+    "fact": "All changes require passing tests before completion"
+  }}],
+  "decisions": [], "corrections": [], "exceptions": [], "insights": [], "questions": [], "failedApproaches": []
 }}
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -125,7 +156,7 @@ User: "No, users are defined in auth/accounts.py, not models/user.py. We don't h
     "rightBelief": "User model is in auth/accounts.py, no models directory exists",
     "severity": "significant"
   }}],
-  "decisions": [], "exceptions": [], "insights": [], "questions": [], "failedApproaches": []
+  "decisions": [], "exceptions": [], "insights": [], "questions": [], "failedApproaches": [], "projectFacts": []
 }}
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -143,7 +174,7 @@ WHY WRONG: Claude didn't claim rate limiting wasn't needed. This is new
 information/requirement, not a correction of a false belief.
 
 ✅ CORRECT:
-{{"decisions": [], "corrections": [], "exceptions": [], "insights": [], "questions": [], "failedApproaches": []}}
+{{"decisions": [], "corrections": [], "exceptions": [], "insights": [], "questions": [], "failedApproaches": [], "projectFacts": []}}
 
 # ─────────────────────────────────────────────────────────────────────────────
 # [EXCEPTION_ONE_TIME_OVERRIDE]
@@ -161,7 +192,7 @@ User: "Skip tests for now — this is just a quick prototype we're throwing away
     "justification": "Quick prototype being discarded next week",
     "scope": "one-time"
   }}],
-  "decisions": [], "corrections": [], "insights": [], "questions": [], "failedApproaches": []
+  "decisions": [], "corrections": [], "insights": [], "questions": [], "failedApproaches": [], "projectFacts": []
 }}
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -180,7 +211,7 @@ User: "We use JWT tokens with RS256 signing. Tokens expire after 1 hour and refr
     "answer": "JWT tokens with RS256 signing, 1hr expiry, 30-day refresh tokens",
     "context": "API authentication"
   }}],
-  "decisions": [], "corrections": [], "exceptions": [], "insights": [], "failedApproaches": []
+  "decisions": [], "corrections": [], "exceptions": [], "insights": [], "failedApproaches": [], "projectFacts": []
 }}
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -197,7 +228,7 @@ User: "Yes."
 WHY WRONG: This is a trivial confirmation, not substantive Q&A worth remembering.
 
 ✅ CORRECT:
-{{"decisions": [], "corrections": [], "exceptions": [], "insights": [], "questions": [], "failedApproaches": []}}
+{{"decisions": [], "corrections": [], "exceptions": [], "insights": [], "questions": [], "failedApproaches": [], "projectFacts": []}}
 
 # ─────────────────────────────────────────────────────────────────────────────
 # [FAILED_APPROACH_CONCRETE]
@@ -214,7 +245,7 @@ User: "That regex approach didn't work — it times out on large files. We need 
     "outcome": "Times out on large files",
     "lesson": "Use streaming for large file handling"
   }}],
-  "decisions": [], "corrections": [], "exceptions": [], "insights": [], "questions": []
+  "decisions": [], "corrections": [], "exceptions": [], "insights": [], "questions": [], "projectFacts": []
 }}
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -233,7 +264,7 @@ User: "Oh interesting — they correlate with when marketing sends their email b
     "summary": "Nightly errors correlate with marketing email blasts causing DB load spikes",
     "implications": "May need to schedule batch jobs to avoid email blast times"
   }}],
-  "decisions": [], "corrections": [], "exceptions": [], "questions": [], "failedApproaches": []
+  "decisions": [], "corrections": [], "exceptions": [], "questions": [], "failedApproaches": [], "projectFacts": []
 }}
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -263,7 +294,83 @@ User: "Actually we use GraphQL here, not REST. And let's put it under /graphql n
     "justification": "Internal-only endpoint",
     "scope": "conditional"
   }}],
-  "insights": [], "questions": [], "failedApproaches": []
+  "insights": [], "questions": [], "failedApproaches": [], "projectFacts": []
+}}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# [PROJECT_FACT_STATING_CONVENTION]
+# User states existing project convention
+# ─────────────────────────────────────────────────────────────────────────────
+
+Claude: "I'll run the tests with unittest."
+User: "We use pytest here, not unittest."
+
+✅ CORRECT:
+{{
+  "projectFacts": [{{
+    "confidence": 0.9,
+    "category": "tool",
+    "fact": "Uses pytest for testing"
+  }}],
+  "corrections": [{{
+    "confidence": 0.85,
+    "wrongBelief": "Project uses unittest",
+    "rightBelief": "Project uses pytest",
+    "severity": "minor"
+  }}],
+  "decisions": [], "exceptions": [], "insights": [], "questions": [], "failedApproaches": []
+}}
+
+NOTE: Both ProjectFact AND Correction — the user corrected Claude while also
+stating a project convention.
+
+# ─────────────────────────────────────────────────────────────────────────────
+# [PROJECT_FACT_VS_DECISION]
+# Stating existing fact vs making new decision
+# ─────────────────────────────────────────────────────────────────────────────
+
+Example A - PROJECT_FACT:
+User: "By the way, we use uv for all Python commands in this project."
+
+✅ CORRECT:
+{{
+  "projectFacts": [{{
+    "confidence": 0.9,
+    "category": "tool",
+    "fact": "Uses uv for Python package management"
+  }}],
+  "decisions": [], "corrections": [], "exceptions": [], "insights": [], "questions": [], "failedApproaches": []
+}}
+
+Example B - DECISION (not PROJECT_FACT):
+User: "Let's switch to using uv instead of pip."
+
+✅ CORRECT:
+{{
+  "decisions": [{{
+    "confidence": 0.85,
+    "description": "Switch to uv from pip for package management"
+  }}],
+  "projectFacts": [], "corrections": [], "exceptions": [], "insights": [], "questions": [], "failedApproaches": []
+}}
+
+WHY: Example A states existing convention. Example B makes new decision.
+
+# ─────────────────────────────────────────────────────────────────────────────
+# [PROJECT_FACT_MULTIPLE]
+# Multiple facts from one statement
+# ─────────────────────────────────────────────────────────────────────────────
+
+User: "This project uses Python 3.11, tests are in the tests/ directory, and we use black for formatting."
+
+✅ CORRECT:
+{{
+  "projectFacts": [
+    {{"confidence": 0.9, "category": "environment", "fact": "Uses Python 3.11"}},
+    {{"confidence": 0.9, "category": "pattern", "fact": "Tests located in tests/ directory"}},
+    {{"confidence": 0.9, "category": "tool", "fact": "Uses black for code formatting"}}
+  ],
+  "decisions": [], "corrections": [], "exceptions": [], "insights": [], "questions": [], "failedApproaches": []
 }}
 
 ═══════════════════════════════════════════════════════════════════════════════
@@ -276,4 +383,5 @@ Return a JSON object with these fields (all lists, empty if nothing detected):
 - exceptions: list of Exception_ objects
 - insights: list of Insight objects
 - questions: list of Question objects
-- failedApproaches: list of FailedApproach objects"""
+- failedApproaches: list of FailedApproach objects
+- projectFacts: list of ProjectFact objects"""

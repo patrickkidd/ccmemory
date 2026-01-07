@@ -8,6 +8,7 @@
 
 - [doc/DEVELOPMENT.md](doc/DEVELOPMENT.md) — Development setup
 - [doc/PROJECT_VISION.md](doc/PROJECT_VISION.md) — Full conceptual architecture
+- [doc/NEO4J_COOKBOOK.md](doc/NEO4J_COOKBOOK.md) — Query recipes for exploring the graph
 - [doc/TELEMETRY.md](doc/TELEMETRY.md) — Enterprise metrics framework
 - [doc/IMPLEMENTATION_PLAN.md](doc/IMPLEMENTATION_PLAN.md) — Phase 1 build specs
 
@@ -75,19 +76,21 @@ Once containers are running, access:
 In Neo4j Browser (http://localhost:7474), try these queries:
 
 ```cypher
-# See all nodes and relationships
-MATCH (n)-[r]->(m) RETURN n, r, m LIMIT 100
-
-# View decisions for a specific project
-MATCH (s:Session)-[:HAS_DECISION]->(d:Decision)
-WHERE s.projectName = 'your-project'
+// Your decision history — sessions with their decisions
+MATCH (s:Session {project: 'your-project'})-[:DECIDED]->(d:Decision)
 RETURN s, d
 
-# See the full session structure
-MATCH (s:Session)-[r]->(n) RETURN s, r, n LIMIT 50
+// Full knowledge graph — sessions, decisions, corrections, insights
+MATCH (s:Session {project: 'your-project'})-[r]->(n)
+RETURN s, r, n
+LIMIT 100
+
+// Learning from mistakes — corrections over time
+MATCH (s:Session {project: 'your-project'})-[:CORRECTED]->(c:Correction)
+RETURN s, c
 ```
 
-Click any node in the visualization to expand its connections. The graph view shows how sessions, decisions, corrections, and other memory types relate to each other.
+Click any node to expand connections. See [doc/NEO4J_COOKBOOK.md](doc/NEO4J_COOKBOOK.md) for more queries.
 
 ---
 

@@ -1,4 +1,5 @@
 import json
+import logging
 import uuid
 import asyncio
 from datetime import datetime
@@ -14,10 +15,13 @@ from .detection.schemas import (
     Exception_,
     FailedApproach,
     Insight,
+    ProjectFact,
     Question,
     ReferenceData,
 )
 from .embeddings import getEmbedding
+
+logger = logging.getLogger("ccmemory")
 
 
 def filterPendingBackfillSessions(session_stems: list[str], client=None) -> list[str]:
@@ -46,6 +50,7 @@ def handleSessionStart(
         session_id=session_id, project=project, started_at=datetime.now().isoformat()
     )
 
+    facts = client.queryProjectFacts(project, limit=10)
     recent = client.queryRecent(project, limit=15)
     stale = client.queryStaleDecisions(project, days=30)
     failed = client.queryFailedApproaches(project, limit=5)
@@ -55,6 +60,14 @@ def handleSessionStart(
         f"Session: {session_id[:12]}...",
         "",
     ]
+
+    if facts:
+        context_parts.append("## Project Conventions")
+        for f in facts[:8]:
+            category = f.get("category", "")
+            fact_text = f.get("fact", "")[:80]
+            context_parts.append(f"- [{category}] {fact_text}")
+        context_parts.append("")
 
     if recent:
         context_parts.append("## Recent Context")
@@ -74,9 +87,7 @@ def handleSessionStart(
         context_parts.append("## Decisions Needing Review")
         for d in stale[:3]:
             desc = str(d.get("description", ""))[:80]
-            context_parts.append(
-                f"- {desc} (developmental, may need revisit)"
-            )
+            context_parts.append(f"- {desc} (developmental, may need revisit)")
 
     if failed:
         context_parts.append("")
@@ -86,9 +97,9 @@ def handleSessionStart(
                 f"- {str(f.get('approach', ''))[:60]}: {str(f.get('lesson', ''))[:60]}"
             )
 
-    if not recent and not stale and not failed:
+    if not facts and not recent and not stale and not failed:
         context_parts.append(
-            "No prior context. Decisions, corrections, and insights will be captured."
+            "No prior context. Project facts, decisions, and corrections will be captured."
         )
 
     pending = filterPendingBackfillSessions(conversation_stems or [], client)
@@ -120,15 +131,17 @@ def readTranscript(transcript_path: str) -> tuple[str, str, str]:
     user_message = ""
     assistant_response = ""
     for msg in reversed(messages):
-        if msg.get("role") == "user" and not user_message:
-            content = msg.get("content", "")
+        inner = msg.get("message", {})
+        role = inner.get("role") or msg.get("type")
+        if role == "user" and not user_message:
+            content = inner.get("content", "")
             if isinstance(content, list):
                 content = " ".join(
                     c.get("text", "") for c in content if isinstance(c, dict)
                 )
             user_message = str(content)
-        elif msg.get("role") == "assistant" and not assistant_response:
-            content = msg.get("content", "")
+        elif role == "assistant" and not assistant_response:
+            content = inner.get("content", "")
             if isinstance(content, list):
                 content = " ".join(
                     c.get("text", "") for c in content if isinstance(c, dict)
@@ -138,19 +151,25 @@ def readTranscript(transcript_path: str) -> tuple[str, str, str]:
             break
 
     context = "\n".join(
-        f"{m.get('role', 'unknown')}: {str(m.get('content', ''))[:200]}"
+        f"{m.get('type', 'unknown')}: {str(m.get('message', {}).get('content', ''))[:200]}"
         for m in messages[-10:-2]
     )
     return user_message, assistant_response, context
 
 
-def _storeDetection(client, session_id: str, detection: Detection) -> bool:
+def _storeDetection(
+    client, session_id: str, detection: Detection, project: str = ""
+) -> bool:
     det_id = f"{detection.type.value}-{uuid.uuid4().hex[:8]}"
 
     try:
         embedding = getEmbedding(detection.data.model_dump_json())
     except Exception:
         embedding = [0.0] * 1024
+
+    if detection.type == DetectionType.ProjectFact and project:
+        if client.projectFactExists(project, embedding, threshold=0.9):
+            return False
 
     data = detection.data
     match detection.type:
@@ -236,20 +255,42 @@ def _storeDetection(client, session_id: str, detection: Detection) -> bool:
                     detection_confidence=detection.confidence,
                     detection_method="llm_extraction",
                 )
+        case DetectionType.ProjectFact:
+            assert isinstance(data, ProjectFact)
+            client.createProjectFact(
+                fact_id=det_id,
+                session_id=session_id,
+                category=data.category.value,
+                fact=data.fact,
+                embedding=embedding,
+                context=data.context,
+                detection_confidence=detection.confidence,
+                detection_method="llm_extraction",
+            )
     return True
 
 
-def handleMessageResponse(session_id: str, transcript_path: str, cwd: str) -> dict:
+async def handleMessageResponse(session_id: str, transcript_path: str, cwd: str) -> dict:
     user_message, claude_response, context = readTranscript(transcript_path)
+    logger.debug(f"transcript_path={transcript_path}, user_message_len={len(user_message)}")
     if not user_message:
+        logger.debug("No user_message found, skipping detection")
         return {"detections": 0}
 
     try:
-        detections = asyncio.run(detectAll(user_message, claude_response, context))
-    except Exception:
-        return {"detections": 0, "error": "detection_failed"}
+        detections = await detectAll(user_message, claude_response, context)
+    except Exception as e:
+        logger.exception(f"Detection failed: {e}")
+        return {"detections": 0, "error": str(e)}
 
     if not detections:
+        prompt_preview = (
+            user_message[:80] + "..." if len(user_message) > 80 else user_message
+        )
+        logger.info(
+            prompt_preview,
+            extra={"cat": "prompt", "event": "no_mutation"},
+        )
         return {"detections": 0}
 
     client = getClient()
@@ -258,7 +299,7 @@ def handleMessageResponse(session_id: str, transcript_path: str, cwd: str) -> di
 
     for detection in detections:
         try:
-            if _storeDetection(client, session_id, detection):
+            if _storeDetection(client, session_id, detection, project):
                 stored += 1
         except Exception:
             continue

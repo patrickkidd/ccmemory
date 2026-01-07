@@ -2,6 +2,12 @@
 
 Context graph for persistent memory across Claude Code sessions.
 
+## Development Process
+
+- After changes, provide concise verification steps for the user
+- **CRITICAL** Self-learn: When learning new project conventions/rules, update this file or add indexed sub-folder CLAUDE.md files. Keep instructions concise with lossless compression.
+- Continuously optimize organization of all CLAUDE.md instruction files
+
 ## Session Startup Requirement
 
 **IMPORTANT:** If the session context shows "## Pending History Import" with conversations to import, you MUST immediately use `AskUserQuestion` to offer the user:
@@ -75,6 +81,7 @@ Container-internal (set in docker-compose.yml):
 - Avoid redundant comments
 - Keep names short and precise
 - Use enums for finite string value sets
+- Never use lazy/defensive exception catching (e.g. bare `except:` or `except Exception:`) — let errors surface with specific types so root causes are visible
 
 ## Architecture
 

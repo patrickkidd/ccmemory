@@ -6,6 +6,7 @@ dist/
 build/
 .eggs/
 *.egg
+uv.lock
 
 # Virtual environments
 venv/

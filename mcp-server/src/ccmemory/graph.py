@@ -163,7 +163,10 @@ class GraphClient:
                 props=kwargs,
             )
         duration = int((time.time() - start) * 1000)
-        logger.info(f"Created Decision id={decision_id[:12]}... ({duration}ms)")
+        logger.info(
+            f"Created Decision id={decision_id[:12]}... ({duration}ms)",
+            extra={"cat": "tool"},
+        )
 
     def createCorrection(
         self,
@@ -198,7 +201,10 @@ class GraphClient:
                 props=kwargs,
             )
         duration = int((time.time() - start) * 1000)
-        logger.info(f"Created Correction id={correction_id[:12]}... ({duration}ms)")
+        logger.info(
+            f"Created Correction id={correction_id[:12]}... ({duration}ms)",
+            extra={"cat": "tool"},
+        )
 
     def createException(
         self,
@@ -233,7 +239,10 @@ class GraphClient:
                 props=kwargs,
             )
         duration = int((time.time() - start) * 1000)
-        logger.info(f"Created Exception id={exception_id[:12]}... ({duration}ms)")
+        logger.info(
+            f"Created Exception id={exception_id[:12]}... ({duration}ms)",
+            extra={"cat": "tool"},
+        )
 
     def createInsight(
         self,
@@ -268,7 +277,10 @@ class GraphClient:
                 props=kwargs,
             )
         duration = int((time.time() - start) * 1000)
-        logger.info(f"Created Insight id={insight_id[:12]}... ({duration}ms)")
+        logger.info(
+            f"Created Insight id={insight_id[:12]}... ({duration}ms)",
+            extra={"cat": "tool"},
+        )
 
     def createQuestion(
         self, question_id: str, session_id: str, question: str, answer: str, **kwargs
@@ -295,7 +307,10 @@ class GraphClient:
                 props=kwargs,
             )
         duration = int((time.time() - start) * 1000)
-        logger.info(f"Created Question id={question_id[:12]}... ({duration}ms)")
+        logger.info(
+            f"Created Question id={question_id[:12]}... ({duration}ms)",
+            extra={"cat": "tool"},
+        )
 
     def createFailedApproach(
         self,
@@ -330,7 +345,10 @@ class GraphClient:
                 props=kwargs,
             )
         duration = int((time.time() - start) * 1000)
-        logger.info(f"Created FailedApproach id={fa_id[:12]}... ({duration}ms)")
+        logger.info(
+            f"Created FailedApproach id={fa_id[:12]}... ({duration}ms)",
+            extra={"cat": "tool"},
+        )
 
     def createReference(
         self, ref_id: str, session_id: str, ref_type: str, uri: str, **kwargs
@@ -357,7 +375,67 @@ class GraphClient:
                 props=kwargs,
             )
         duration = int((time.time() - start) * 1000)
-        logger.info(f"Created Reference id={ref_id[:12]}... ({duration}ms)")
+        logger.info(
+            f"Created Reference id={ref_id[:12]}... ({duration}ms)",
+            extra={"cat": "tool"},
+        )
+
+    def createProjectFact(
+        self,
+        fact_id: str,
+        session_id: str,
+        category: str,
+        fact: str,
+        embedding: list,
+        **kwargs,
+    ):
+        logger.debug(f"createProjectFact(id={fact_id[:12]}...)")
+        start = time.time()
+        with self.driver.session() as session:
+            session.run(
+                """
+                MATCH (s:Session {id: $session_id})
+                CREATE (pf:ProjectFact {id: $fact_id})
+                SET pf.category = $category,
+                    pf.fact = $fact,
+                    pf.timestamp = datetime(),
+                    pf.project = s.project,
+                    pf.user_id = s.user_id,
+                    pf.embedding = $embedding
+                SET pf += $props
+                CREATE (s)-[:STATED]->(pf)
+                """,
+                session_id=session_id,
+                fact_id=fact_id,
+                category=category,
+                fact=fact,
+                embedding=embedding,
+                props=kwargs,
+            )
+        duration = int((time.time() - start) * 1000)
+        logger.info(
+            f"Created ProjectFact id={fact_id[:12]}... ({duration}ms)",
+            extra={"cat": "tool"},
+        )
+
+    def projectFactExists(
+        self, project: str, embedding: list, threshold: float = 0.9
+    ) -> bool:
+        """Check if a semantically similar fact already exists."""
+        with self.driver.session() as session:
+            result = session.run(
+                """
+                CALL db.index.vector.queryNodes('projectfact_embedding', 50, $embedding)
+                YIELD node, score
+                WHERE node.project = $project AND score >= $threshold
+                RETURN node, score
+                LIMIT 1
+                """,
+                embedding=embedding,
+                project=project,
+                threshold=threshold,
+            )
+            return result.single() is not None
 
     # === Domain 1: Query Functions ===
 
@@ -400,6 +478,7 @@ class GraphClient:
                 ("insight_search", "insights"),
                 ("question_search", "questions"),
                 ("failedapproach_search", "failed_approaches"),
+                ("projectfact_search", "project_facts"),
             ]
 
             if include_team and self.user_id:
@@ -435,6 +514,7 @@ class GraphClient:
                 ("decision_embedding", "decisions"),
                 ("correction_embedding", "corrections"),
                 ("insight_embedding", "insights"),
+                ("projectfact_embedding", "project_facts"),
             ]
 
             if include_team and self.user_id:
@@ -488,6 +568,21 @@ class GraphClient:
                 limit=limit,
             )
             return [dict(record["f"]) for record in result]
+
+    def queryProjectFacts(self, project: str, limit: int = 20):
+        """Get project facts (conventions, tools, patterns)."""
+        with self.driver.session() as session:
+            result = session.run(
+                """
+                MATCH (pf:ProjectFact {project: $project})
+                RETURN pf
+                ORDER BY pf.timestamp DESC
+                LIMIT $limit
+                """,
+                project=project,
+                limit=limit,
+            )
+            return [dict(record["pf"]) for record in result]
 
     # === Domain 2: Chunk Index ===
 
@@ -674,6 +769,7 @@ class GraphClient:
             "total_sessions": self._countNodes("Session", project),
             "total_insights": self._countNodes("Insight", project),
             "total_failed_approaches": self._countNodes("FailedApproach", project),
+            "total_project_facts": self._countNodes("ProjectFact", project),
         }
 
     def _countNodes(self, label: str, project: str, status: str = None) -> int:

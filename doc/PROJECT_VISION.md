@@ -43,6 +43,22 @@ Not quite. Here's the difference:
 
 They're complementary: Copilot finds your documents; ccmemory remembers your thinking.
 
+### Why Not Just Use Instructions Files (e.g. CLAUDE.md)?
+
+*See [Why Not Just Write to CLAUDE.md?](WHY_GRAPH.md#why-not-just-write-to-claudemd) for technical details.*
+
+Instructions files create a meta-problem: you need instructions to update instructions. New convention? Tell the AI, then tell it to update the file, then verify. Missed instruction? Awkward workarounds. Subfolder files need indexing from root files — more instructions about instructions. All repeated per project.
+
+**ccmemory just works.** Install once, start working. Every project fact and convention you mention is captured automatically — no setup, no configuration, no files to maintain. The AI learns your project by listening, not by reading documentation you wrote for it.
+
+| Aspect | Instructions Files | ccmemory |
+|--------|-------------------|----------|
+| **Setup** | Create files, index subfolders, repeat per project | None |
+| **Maintenance** | Instructions to write instructions | Automatic |
+| **Coverage** | What you remember to document | Everything stated in conversation |
+
+Say "we use uv here" once → captured forever. No meta-loop.
+
 ### Why Graphs? (Not Just Search)
 
 *See [Why Graphs? Deep Dive](WHY_GRAPH.md) for technical details.*

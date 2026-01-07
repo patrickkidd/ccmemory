@@ -12,6 +12,7 @@ class DetectionType(enum.StrEnum):
     Question = "question"
     FailedApproach = "failed_approach"
     Reference = "reference"
+    ProjectFact = "project_fact"
 
 
 class Severity(enum.StrEnum):
@@ -32,6 +33,15 @@ class InsightCategory(enum.StrEnum):
     Strategy = "strategy"
     Personal = "personal"
     Synthesis = "synthesis"
+
+
+class FactCategory(enum.StrEnum):
+    Tool = "tool"
+    Pattern = "pattern"
+    Convention = "convention"
+    Environment = "environment"
+    Constraint = "constraint"
+    Workflow = "workflow"
 
 
 class ReferenceType(enum.StrEnum):
@@ -81,6 +91,13 @@ class FailedApproach(BaseModel):
     lesson: str | None = None
 
 
+class ProjectFact(BaseModel):
+    confidence: float
+    category: FactCategory = FactCategory.Convention
+    fact: str
+    context: str | None = None
+
+
 class Reference(BaseModel):
     type: ReferenceType
     uri: str
@@ -97,12 +114,13 @@ class DetectionOutput(BaseModel):
     insights: list[Insight] = []
     questions: list[Question] = []
     failedApproaches: list[FailedApproach] = []
+    projectFacts: list[ProjectFact] = []
 
 
 class Detection(BaseModel):
     type: DetectionType
     confidence: float
-    data: Decision | Correction | Exception_ | Insight | Question | FailedApproach | ReferenceData
+    data: Decision | Correction | Exception_ | Insight | Question | FailedApproach | ProjectFact | ReferenceData
 
 
 class RerankResult(BaseModel):

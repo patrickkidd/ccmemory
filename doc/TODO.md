@@ -1,3 +1,4 @@
+- automatically track project facts, be able to ask about them.
 - Backfill from claude conversations
 - Logging / debug in development mode
 - Multiple projects on same MCP?

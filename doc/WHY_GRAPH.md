@@ -109,6 +109,44 @@ Graph traversal for **reasoning**: "Given what's relevant, what can we infer?"
 
 The cognitive multiplier comes from the graph — that's where "probably relevant" becomes "definitely complete."
 
+## Why Not Just Write to CLAUDE.md?
+
+An alternative to storing project facts in the graph: automatically append learned conventions to the target project's CLAUDE.md file. This is tempting because CLAUDE.md is already loaded at session start with zero latency.
+
+| Dimension | Graph Storage | CLAUDE.md Auto-Write |
+|-----------|---------------|---------------------|
+| **Latency** | MCP query (~10-50ms) | Zero (already in context) |
+| **Dependencies** | Neo4j + MCP server must run | Filesystem only |
+| **Discoverability** | Requires tools to view/edit | Human-readable, git-tracked |
+| **Semantic Search** | Yes - find related facts | No - exact text only |
+| **Deduplication** | Embedding similarity (semantic) | String matching only |
+| **Cross-Project** | Can share facts between projects | Per-project only |
+| **Telemetry** | When learned, how often used | None |
+| **Scalability** | Thousands of facts with indexing | ~10KB practical limit |
+
+**Decision**: Graph storage chosen because:
+1. Semantic deduplication prevents "uses pytest" and "we use pytest for testing" from being stored as separate facts
+2. Cross-project learning enables "you used this pattern in ProjectX" insights
+3. Telemetry supports the cognitive coefficient metric
+4. Scalability matters for long-running projects with accumulated knowledge
+
+**Tradeoff accepted**: Facts require MCP server running to be surfaced. If server is down, Claude Code falls back to stateless behavior.
+
+### Project Facts Are Domain 1, Not Domain 2
+
+A common confusion: "We use pytest" feels like reference knowledge (Domain 2). It's actually Domain 1:
+
+| Characteristic | Domain 1 | Domain 2 |
+|----------------|----------|----------|
+| **Confidence** | High - user stated directly | Medium - needs validation |
+| **Source** | Conversation | Imported docs, web search |
+| **Entity resolution** | None needed | Bounded (concepts have stable definitions) |
+| **Example** | "We use pytest" | "pytest is a Python testing framework" |
+
+"We use pytest" is **your project's convention** - high confidence, stated directly, no ambiguity. The general knowledge that "pytest is a testing framework" would be Domain 2.
+
+This matters for storage: Domain 1 facts don't need the bridge layer validation that Domain 2 concepts require. When you say "we use uv", that's immediately true for your project - no proposal/validation cycle needed.
+
 ## Current State vs Vision
 
 **Implemented:**

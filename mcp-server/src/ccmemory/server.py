@@ -20,6 +20,10 @@ from . import activitylog  # noqa: F401 - sets up activity log handler
 
 
 class JsonFormatter(logging.Formatter):
+    def __init__(self):
+        super().__init__()
+        self.user_id = os.getenv("CCMEMORY_USER_ID", "")
+
     def format(self, record):
         entry = {
             "ts": self.formatTime(record),
@@ -27,6 +31,7 @@ class JsonFormatter(logging.Formatter):
             "cat": getattr(record, "cat", "mcp"),
             "event": getattr(record, "event", record.funcName),
             "project": getattr(record, "project", ""),
+            "user": self.user_id,
         }
         if record.getMessage():
             entry["msg"] = record.getMessage()
@@ -97,7 +102,7 @@ async def hookMessageResponse(request: Request) -> JSONResponse:
     session_id = data.get("session_id", "")
     logger.info(f"<- POST /hooks/message-response (project={project})")
     try:
-        result = hooks.handleMessageResponse(
+        result = await hooks.handleMessageResponse(
             session_id=session_id,
             transcript_path=data.get("transcript_path", ""),
             cwd=data.get("cwd", ""),
@@ -152,7 +157,9 @@ async def bulkImport(request: Request) -> JSONResponse:
     if not project:
         return JSONResponse({"error": "project required"}, status_code=400)
 
-    logger.info(f"<- POST /api/bulk-import (project={project}, count={len(conversations)})")
+    logger.info(
+        f"<- POST /api/bulk-import (project={project}, count={len(conversations)})"
+    )
 
     stats = {
         "processed": 0,
@@ -183,7 +190,9 @@ async def bulkImport(request: Request) -> JSONResponse:
             stats["skipped"] += 1
 
     duration = int((time.time() - start) * 1000)
-    logger.info(f"-> 200 (processed={stats['processed']}, skipped={stats['skipped']}, {duration}ms)")
+    logger.info(
+        f"-> 200 (processed={stats['processed']}, skipped={stats['skipped']}, {duration}ms)"
+    )
     return JSONResponse(stats)
 
 
@@ -191,6 +200,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--http", action="store_true", help="Run as HTTP server")
     parser.add_argument("--port", type=int, default=8766, help="HTTP port")
+    parser.add_argument("--reload", action="store_true", help="Enable auto-reload")
     parser.add_argument(
         "--init-schema", action="store_true", help="Initialize Neo4j schema"
     )
@@ -203,22 +213,35 @@ def main():
 
     if args.http:
         logger.info(f"Starting HTTP server on port {args.port}")
-        hook_routes = [
-            Route("/health", healthCheck, methods=["GET"]),
-            Route("/hooks/session-start", hookSessionStart, methods=["POST"]),
-            Route("/hooks/message-response", hookMessageResponse, methods=["POST"]),
-            Route("/hooks/session-end", hookSessionEnd, methods=["POST"]),
-            Route("/api/bulk-import", bulkImport, methods=["POST"]),
-        ]
-        app = Starlette(
-            routes=[
-                *hook_routes,
-                Mount("/", app=mcp.sse_app()),
-            ]
-        )
-        uvicorn.run(app, host="0.0.0.0", port=args.port)
+        if args.reload:
+            uvicorn.run(
+                "ccmemory.server:createApp",
+                factory=True,
+                host="0.0.0.0",
+                port=args.port,
+                reload=True,
+                reload_dirs=["src"],
+            )
+        else:
+            uvicorn.run(createApp(), host="0.0.0.0", port=args.port)
     else:
         mcp.run()
+
+
+def createApp():
+    hook_routes = [
+        Route("/health", healthCheck, methods=["GET"]),
+        Route("/hooks/session-start", hookSessionStart, methods=["POST"]),
+        Route("/hooks/message-response", hookMessageResponse, methods=["POST"]),
+        Route("/hooks/session-end", hookSessionEnd, methods=["POST"]),
+        Route("/api/bulk-import", bulkImport, methods=["POST"]),
+    ]
+    return Starlette(
+        routes=[
+            *hook_routes,
+            Mount("/", app=mcp.sse_app()),
+        ]
+    )
 
 
 if __name__ == "__main__":

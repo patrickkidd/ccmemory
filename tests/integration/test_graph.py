@@ -188,3 +188,119 @@ def test_record_telemetry(client, test_project):
         record = result.single()
         assert record is not None
         assert record["t"]["count"] == 5
+
+
+@pytest.mark.integration
+def test_create_project_fact(client, test_project, test_session_id):
+    """Test creating a project fact linked to a session."""
+    from datetime import datetime
+
+    client.createSession(
+        session_id=test_session_id,
+        project=test_project,
+        started_at=datetime.now().isoformat()
+    )
+
+    fact_id = f"projectfact-{uuid.uuid4().hex[:8]}"
+    embedding = [0.1] * 384
+
+    client.createProjectFact(
+        fact_id=fact_id,
+        session_id=test_session_id,
+        category="tool",
+        fact="Uses pytest for testing",
+        embedding=embedding,
+        context="testing framework"
+    )
+
+    with client.driver.session() as session:
+        result = session.run(
+            "MATCH (s:Session)-[:STATED]->(pf:ProjectFact {id: $id}) RETURN pf",
+            id=fact_id
+        )
+        record = result.single()
+        assert record is not None
+        assert record["pf"]["fact"] == "Uses pytest for testing"
+        assert record["pf"]["category"] == "tool"
+
+
+@pytest.mark.integration
+def test_query_project_facts(client, test_project, test_session_id):
+    """Test querying project facts."""
+    from datetime import datetime
+
+    client.createSession(
+        session_id=test_session_id,
+        project=test_project,
+        started_at=datetime.now().isoformat()
+    )
+
+    fact_id = f"projectfact-{uuid.uuid4().hex[:8]}"
+    embedding = [0.1] * 384
+
+    client.createProjectFact(
+        fact_id=fact_id,
+        session_id=test_session_id,
+        category="convention",
+        fact="Uses camelCase for functions",
+        embedding=embedding
+    )
+
+    results = client.queryProjectFacts(test_project, limit=10)
+    assert len(results) > 0
+
+    found = False
+    for r in results:
+        if r.get("id") == fact_id:
+            found = True
+            assert r.get("fact") == "Uses camelCase for functions"
+            break
+    assert found
+
+
+@pytest.mark.integration
+def test_project_fact_exists(client, test_project, test_session_id):
+    """Test semantic deduplication of project facts."""
+    from datetime import datetime
+    import random
+
+    client.createSession(
+        session_id=test_session_id,
+        project=test_project,
+        started_at=datetime.now().isoformat()
+    )
+
+    fact_id = f"projectfact-{uuid.uuid4().hex[:8]}"
+    random.seed(42)
+    embedding = [random.uniform(-1, 1) for _ in range(384)]
+
+    client.createProjectFact(
+        fact_id=fact_id,
+        session_id=test_session_id,
+        category="tool",
+        fact="Uses uv for package management",
+        embedding=embedding
+    )
+
+    exists = client.projectFactExists(test_project, embedding, threshold=0.9)
+    assert exists
+
+    random.seed(999)
+    different_embedding = [random.uniform(-1, 1) for _ in range(384)]
+    exists_different = client.projectFactExists(test_project, different_embedding, threshold=0.9)
+    assert not exists_different
+
+
+@pytest.mark.integration
+def test_metrics_include_project_facts(client, test_project, test_session_id):
+    """Test that getAllMetrics includes project facts count."""
+    from datetime import datetime
+
+    client.createSession(
+        session_id=test_session_id,
+        project=test_project,
+        started_at=datetime.now().isoformat()
+    )
+
+    metrics = client.getAllMetrics(test_project)
+    assert "total_project_facts" in metrics

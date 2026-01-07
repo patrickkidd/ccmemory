@@ -220,6 +220,7 @@
                                     <button class="button filter-btn is-active" data-cat="hook" onclick="toggleFilter('hook', this)">Hooks</button>
                                     <button class="button filter-btn is-active" data-cat="tool" onclick="toggleFilter('tool', this)">Tools</button>
                                     <button class="button filter-btn is-active" data-cat="neo4j" onclick="toggleFilter('neo4j', this)">Neo4j</button>
+                                    <button class="button filter-btn is-active" data-cat="prompt" onclick="toggleFilter('prompt', this)">Prompts</button>
                                     <button class="button is-small" onclick="clearConsole()">Clear</button>
                                 </div>
                             </div>
@@ -425,7 +426,7 @@
         loadProjects();
 
         // Developer Console WebSocket
-        const filters = {hook: true, tool: true, neo4j: true, mcp: true};
+        const filters = {hook: true, tool: true, neo4j: true, mcp: true, prompt: true};
         let ws;
         let reconnectDelay = 1000;
 
@@ -463,6 +464,7 @@
                         'hook': 'has-text-info',
                         'tool': 'has-text-success',
                         'neo4j': 'has-text-warning',
+                        'prompt': 'has-text-warning',
                     }[cat] || 'has-text-grey';
                     div.className = categoryClass;
                     if (log.error || log.level === 'ERROR') div.classList.add('has-text-danger');

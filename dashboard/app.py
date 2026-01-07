@@ -1,5 +1,6 @@
 """Flask dashboard for ccmemory."""
 
+import logging
 import os
 
 if os.getenv("GEVENT_SUPPORT") == "True":
@@ -24,6 +25,13 @@ if os.getenv("GEVENT_SUPPORT") == "True":
 app = Flask(__name__)
 app.debug = False
 app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024  # 50MB max upload
+
+if os.getenv("FLASK_DEBUG") or os.getenv("GEVENT_SUPPORT"):
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
 
 MCP_LOG = os.getenv("CCMEMORY_MCP_LOG", "instance/mcp.jsonl")
 NEO4J_LOG = os.getenv("CCMEMORY_NEO4J_LOG", "instance/neo4j.log")

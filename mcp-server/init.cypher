@@ -9,6 +9,7 @@ CREATE CONSTRAINT insight_id IF NOT EXISTS FOR (i:Insight) REQUIRE i.id IS UNIQU
 CREATE CONSTRAINT question_id IF NOT EXISTS FOR (q:Question) REQUIRE q.id IS UNIQUE;
 CREATE CONSTRAINT failedapproach_id IF NOT EXISTS FOR (f:FailedApproach) REQUIRE f.id IS UNIQUE;
 CREATE CONSTRAINT reference_id IF NOT EXISTS FOR (r:Reference) REQUIRE r.id IS UNIQUE;
+CREATE CONSTRAINT projectfact_id IF NOT EXISTS FOR (pf:ProjectFact) REQUIRE pf.id IS UNIQUE;
 
 // Indexes — filtering and sorting
 CREATE INDEX session_project IF NOT EXISTS FOR (s:Session) ON (s.project);
@@ -22,6 +23,9 @@ CREATE INDEX insight_category IF NOT EXISTS FOR (i:Insight) ON (i.category);
 CREATE INDEX question_time IF NOT EXISTS FOR (q:Question) ON (q.timestamp);
 CREATE INDEX failedapproach_time IF NOT EXISTS FOR (f:FailedApproach) ON (f.timestamp);
 CREATE INDEX reference_type IF NOT EXISTS FOR (r:Reference) ON (r.type);
+CREATE INDEX projectfact_project IF NOT EXISTS FOR (pf:ProjectFact) ON (pf.project);
+CREATE INDEX projectfact_category IF NOT EXISTS FOR (pf:ProjectFact) ON (pf.category);
+CREATE INDEX projectfact_time IF NOT EXISTS FOR (pf:ProjectFact) ON (pf.timestamp);
 
 // Full-text search indexes
 CREATE FULLTEXT INDEX decision_search IF NOT EXISTS
@@ -36,6 +40,8 @@ CREATE FULLTEXT INDEX failedapproach_search IF NOT EXISTS
   FOR (f:FailedApproach) ON EACH [f.approach, f.outcome, f.lesson];
 CREATE FULLTEXT INDEX reference_search IF NOT EXISTS
   FOR (r:Reference) ON EACH [r.uri, r.context, r.description];
+CREATE FULLTEXT INDEX projectfact_search IF NOT EXISTS
+  FOR (pf:ProjectFact) ON EACH [pf.fact, pf.context];
 
 // Vector indexes for semantic search (Neo4j 5.13+)
 // Using 384 dimensions for Ollama all-minilm embeddings
@@ -44,6 +50,8 @@ CREATE VECTOR INDEX decision_embedding IF NOT EXISTS FOR (d:Decision) ON d.embed
 CREATE VECTOR INDEX correction_embedding IF NOT EXISTS FOR (c:Correction) ON c.embedding
   OPTIONS {indexConfig: {`vector.dimensions`: 384, `vector.similarity_function`: 'cosine'}};
 CREATE VECTOR INDEX insight_embedding IF NOT EXISTS FOR (i:Insight) ON i.embedding
+  OPTIONS {indexConfig: {`vector.dimensions`: 384, `vector.similarity_function`: 'cosine'}};
+CREATE VECTOR INDEX projectfact_embedding IF NOT EXISTS FOR (pf:ProjectFact) ON pf.embedding
   OPTIONS {indexConfig: {`vector.dimensions`: 384, `vector.similarity_function`: 'cosine'}};
 
 // === DOMAIN 2: Reference Knowledge Index ===

@@ -30,6 +30,8 @@ async def detectAll(
         return []
 
     logger.info(f"Starting detection on {len(user_message)} char message")
+    logger.debug(f"user_message: {user_message[:200]}")
+    logger.debug(f"claude_response: {claude_response[:200]}")
     prompt = DETECTION_PROMPT.format(
         context=context[:500],
         claude_response=claude_response[:500],
@@ -40,7 +42,7 @@ async def detectAll(
     logger.debug("Calling LLM for detection...")
     result = await getLlmClient().complete(prompt, DetectionOutput, maxTokens=1000)
     duration = int((time.time() - start) * 1000)
-    logger.debug(f"LLM response ({duration}ms)")
+    logger.debug(f"LLM response ({duration}ms): {result.model_dump_json()[:500]}")
 
     detections = []
     raw_count = 0
@@ -92,6 +94,14 @@ async def detectAll(
             detections.append(Detection(type=DetectionType.FailedApproach, confidence=item.confidence, data=item))
         else:
             logger.debug(f"- failedApproach (conf={item.confidence:.2f}): FILTERED")
+
+    for item in result.projectFacts:
+        raw_count += 1
+        if item.confidence >= CONFIDENCE_THRESHOLD:
+            logger.debug(f"- projectFact (conf={item.confidence:.2f}): {item.fact[:50]}...")
+            detections.append(Detection(type=DetectionType.ProjectFact, confidence=item.confidence, data=item))
+        else:
+            logger.debug(f"- projectFact (conf={item.confidence:.2f}): FILTERED")
 
     refs = [Reference(type=ReferenceType.Url, uri=u) for u in URL_PATTERN.findall(user_message)]
     refs += [Reference(type=ReferenceType.FilePath, uri=p) for p in PATH_PATTERN.findall(user_message)]
