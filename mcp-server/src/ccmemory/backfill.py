@@ -64,7 +64,7 @@ def isConversationWorthImporting(path: Path) -> bool:
     try:
         with open(path, "r") as f:
             content = f.read(50000)  # Sample first 50KB
-    except Exception:
+    except (FileNotFoundError, IOError):
         return False
 
     # Check text ratio - skip if mostly tool_use/images
@@ -176,10 +176,7 @@ async def backfillConversations(
     progress_callback=None,
 ) -> dict:
     client = None if dry_run else getClient()
-    conversation_files = getConversationFiles(project)
-
-    if limit:
-        conversation_files = conversation_files[:limit]
+    conversation_files = getFilteredConversationFiles(project, limit)
 
     stats = {
         "sessions_found": len(conversation_files),
@@ -304,7 +301,11 @@ async def backfillConversationContent(
                 types = [d.type.value for d in detections]
                 logger.info(
                     f"Pair {stats['pairs_analyzed']}: found {', '.join(types)}",
-                    extra={"cat": "tool", "event": "backfill-detect", "project": project},
+                    extra={
+                        "cat": "tool",
+                        "event": "backfill-detect",
+                        "project": project,
+                    },
                 )
         except Exception as e:
             logger.warning(
@@ -385,10 +386,7 @@ async def backfillMarkdownContent(
                 stats["decisions_imported"] += 1
                 continue
 
-            try:
-                embedding = getEmbedding(f"{entry['description']} {entry['rationale']}")
-            except Exception:
-                embedding = [0.0] * 384
+            embedding = getEmbedding(f"{entry['description']} {entry['rationale']}")
 
             # Create session for this backfill if needed
             backfill_session_id = _deterministicId(
@@ -543,7 +541,7 @@ async def backfillMarkdown(
 
         try:
             content = md_file.read_text()
-        except Exception:
+        except (FileNotFoundError, IOError, OSError):
             continue
 
         relative_path = str(md_file.relative_to(project_root))
@@ -559,12 +557,7 @@ async def backfillMarkdown(
             for entry in entries:
                 decision_id = f"backfill-decision-{uuid.uuid4().hex[:8]}"
 
-                try:
-                    embedding = getEmbedding(
-                        f"{entry['description']} {entry['rationale']}"
-                    )
-                except Exception:
-                    embedding = [0.0] * 384
+                embedding = getEmbedding(f"{entry['description']} {entry['rationale']}")
 
                 client.createDecision(
                     decision_id=decision_id,

@@ -226,7 +226,7 @@ def graph():
             OPTIONAL MATCH (s:Session)-[sr]->(n)
             WITH nodes, rels, collect(DISTINCT {{
                 id: s.id,
-                label: coalesce(s.summary, substring(s.id, 0, 8)),
+                label: 'Session ' + substring(toString(s.started_at), 0, 10),
                 type: 'Session',
                 timestamp: s.started_at
             }}) as session_nodes,
@@ -656,6 +656,10 @@ def import_conversations():
         return jsonify({"error": "Invalid zip file"}), 400
     except requests.RequestException as e:
         return jsonify({"error": f"MCP connection failed: {e}"}), 500
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
 
     return jsonify(stats)
 

@@ -26,6 +26,19 @@
         a.metric-card:hover { transform: scale(1.02); }
         /* Graph styles */
         #cy { height: 450px; border-radius: 4px; }
+        #graph-tooltip {
+            display: none;
+            position: fixed;
+            background: rgba(0,0,0,0.85);
+            color: #fff;
+            padding: 6px 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            max-width: 300px;
+            z-index: 1000;
+            pointer-events: none;
+            white-space: pre-wrap;
+        }
         .graph-legend { display: inline-flex; gap: 0.75rem; flex-wrap: wrap; justify-content: center; }
         .graph-filters { display: flex; gap: 0.75rem; flex-wrap: wrap; }
         .legend-item { display: inline-flex; align-items: center; gap: 0.25rem; font-size: 0.8rem; }
@@ -170,6 +183,7 @@
                     <div class="box">
                         <h2 class="title is-4">Knowledge Graph</h2>
                         <div id="cy"></div>
+                        <div id="graph-tooltip"></div>
                         <div class="has-text-centered mt-3">
                             <div class="graph-legend" id="graph-legend"></div>
                         </div>
@@ -381,6 +395,21 @@
                 if (evt.target === cy) {
                     document.getElementById('node-detail').classList.remove('is-visible');
                 }
+            });
+
+            // Tooltip on hover
+            const tooltip = document.getElementById('graph-tooltip');
+            cy.on('mouseover', 'node', function(evt) {
+                const node = evt.target.data();
+                tooltip.textContent = node.label || node.id;
+                tooltip.style.display = 'block';
+                const pos = evt.renderedPosition;
+                const container = document.getElementById('cy').getBoundingClientRect();
+                tooltip.style.left = (container.left + pos.x + 10) + 'px';
+                tooltip.style.top = (container.top + pos.y - 30) + 'px';
+            });
+            cy.on('mouseout', 'node', function() {
+                tooltip.style.display = 'none';
             });
         }
 
@@ -789,7 +818,6 @@
                         `(${data.files_skipped} skipped)`
                     );
                     loadMetrics();
-                    loadRecentContext();
                 }
             } catch (err) {
                 showImportStatus('error', 'Upload failed: ' + err.message);
@@ -820,7 +848,6 @@
                 } else {
                     alert(`Deleted ${data.deleted} nodes`);
                     loadMetrics();
-                    loadRecentContext();
                 }
             } catch (err) {
                 alert('Failed to clear database: ' + err.message);

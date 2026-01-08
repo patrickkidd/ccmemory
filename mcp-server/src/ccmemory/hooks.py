@@ -185,10 +185,7 @@ def _storeDetection(
 ) -> bool:
     det_id = f"{detection.type.value}-{uuid.uuid4().hex[:8]}"
 
-    try:
-        embedding = getEmbedding(detection.data.model_dump_json())
-    except Exception:
-        embedding = [0.0] * 1024
+    embedding = getEmbedding(detection.data.model_dump_json())
 
     if detection.type == DetectionType.ProjectFact and project:
         if client.projectFactExists(project, embedding, threshold=0.9):
@@ -293,9 +290,13 @@ def _storeDetection(
     return True
 
 
-async def handleMessageResponse(session_id: str, transcript_path: str, cwd: str) -> dict:
+async def handleMessageResponse(
+    session_id: str, transcript_path: str, cwd: str
+) -> dict:
     user_message, claude_response, context = readTranscript(transcript_path)
-    logger.debug(f"transcript_path={transcript_path}, user_message_len={len(user_message)}")
+    logger.debug(
+        f"transcript_path={transcript_path}, user_message_len={len(user_message)}"
+    )
     if not user_message:
         logger.debug("No user_message found, skipping detection")
         return {"detections": 0}
@@ -324,7 +325,7 @@ async def handleMessageResponse(session_id: str, transcript_path: str, cwd: str)
         try:
             if _storeDetection(client, session_id, detection, project):
                 stored += 1
-        except Exception:
+        except (ValueError, RuntimeError, AssertionError):
             continue
 
     client.recordTelemetry(
@@ -346,7 +347,7 @@ def handleSessionEnd(session_id: str, transcript_path: str | None, cwd: str) -> 
         try:
             with open(transcript_path, "r") as f:
                 transcript = f.read()
-        except Exception:
+        except (FileNotFoundError, IOError, OSError):
             pass
 
     summary = f"Session ended at {datetime.now().isoformat()}"

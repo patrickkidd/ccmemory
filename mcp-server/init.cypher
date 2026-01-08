@@ -44,15 +44,15 @@ CREATE FULLTEXT INDEX projectfact_search IF NOT EXISTS
   FOR (pf:ProjectFact) ON EACH [pf.fact, pf.context];
 
 // Vector indexes for semantic search (Neo4j 5.13+)
-// Using 384 dimensions for Ollama all-minilm embeddings
+// Using 768 dimensions for Ollama nomic-embed-text embeddings
 CREATE VECTOR INDEX decision_embedding IF NOT EXISTS FOR (d:Decision) ON d.embedding
-  OPTIONS {indexConfig: {`vector.dimensions`: 384, `vector.similarity_function`: 'cosine'}};
+  OPTIONS {indexConfig: {`vector.dimensions`: 768, `vector.similarity_function`: 'cosine'}};
 CREATE VECTOR INDEX correction_embedding IF NOT EXISTS FOR (c:Correction) ON c.embedding
-  OPTIONS {indexConfig: {`vector.dimensions`: 384, `vector.similarity_function`: 'cosine'}};
+  OPTIONS {indexConfig: {`vector.dimensions`: 768, `vector.similarity_function`: 'cosine'}};
 CREATE VECTOR INDEX insight_embedding IF NOT EXISTS FOR (i:Insight) ON i.embedding
-  OPTIONS {indexConfig: {`vector.dimensions`: 384, `vector.similarity_function`: 'cosine'}};
+  OPTIONS {indexConfig: {`vector.dimensions`: 768, `vector.similarity_function`: 'cosine'}};
 CREATE VECTOR INDEX projectfact_embedding IF NOT EXISTS FOR (pf:ProjectFact) ON pf.embedding
-  OPTIONS {indexConfig: {`vector.dimensions`: 384, `vector.similarity_function`: 'cosine'}};
+  OPTIONS {indexConfig: {`vector.dimensions`: 768, `vector.similarity_function`: 'cosine'}};
 
 // === DOMAIN 2: Reference Knowledge Index ===
 
@@ -62,7 +62,7 @@ CREATE INDEX chunk_project IF NOT EXISTS FOR (ch:Chunk) ON (ch.project);
 CREATE FULLTEXT INDEX chunk_search IF NOT EXISTS
   FOR (ch:Chunk) ON EACH [ch.content, ch.section];
 CREATE VECTOR INDEX chunk_embedding IF NOT EXISTS FOR (ch:Chunk) ON ch.embedding
-  OPTIONS {indexConfig: {`vector.dimensions`: 384, `vector.similarity_function`: 'cosine'}};
+  OPTIONS {indexConfig: {`vector.dimensions`: 768, `vector.similarity_function`: 'cosine'}};
 
 // === DOMAIN 2: Concepts and Hypotheses (Roadmap) ===
 
