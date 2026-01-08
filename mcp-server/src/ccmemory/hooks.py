@@ -55,6 +55,7 @@ def handleSessionStart(
     stale = client.queryStaleDecisions(project, days=30)
     failed = client.queryFailedApproaches(project, limit=5)
 
+    retrieved_ids = []
     context_parts = [
         f"# Context Graph: {project}",
         f"Session: {session_id[:12]}...",
@@ -64,6 +65,8 @@ def handleSessionStart(
     if facts:
         context_parts.append("## Project Conventions")
         for f in facts[:8]:
+            if f.get("id"):
+                retrieved_ids.append(f["id"])
             category = f.get("category", "")
             fact_text = f.get("fact", "")[:80]
             context_parts.append(f"- [{category}] {fact_text}")
@@ -75,6 +78,8 @@ def handleSessionStart(
             node = item.get("n", {})
             if not node:
                 continue
+            if node.get("id"):
+                retrieved_ids.append(node["id"])
             if "description" in node:
                 context_parts.append(f"- Decision: {str(node['description'])[:100]}")
             elif "wrong_belief" in node:
@@ -86,6 +91,8 @@ def handleSessionStart(
         context_parts.append("")
         context_parts.append("## Decisions Needing Review")
         for d in stale[:3]:
+            if d.get("id"):
+                retrieved_ids.append(d["id"])
             desc = str(d.get("description", ""))[:80]
             context_parts.append(f"- {desc} (developmental, may need revisit)")
 
@@ -93,6 +100,8 @@ def handleSessionStart(
         context_parts.append("")
         context_parts.append("## Failed Approaches (Don't Repeat)")
         for f in failed[:3]:
+            if f.get("id"):
+                retrieved_ids.append(f["id"])
             context_parts.append(
                 f"- {str(f.get('approach', ''))[:60]}: {str(f.get('lesson', ''))[:60]}"
             )
@@ -114,10 +123,24 @@ def handleSessionStart(
         context_parts.append("If user accepts, call ccmemory_list_conversations then")
         context_parts.append("ccmemory_backfill_conversation for each session.")
 
+    context_text = "\n".join(context_parts)
+
+    if retrieved_ids:
+        client.recordRetrieval(
+            session_id=session_id,
+            project=project,
+            retrieved_ids=retrieved_ids,
+            context_summary=context_text,
+        )
+        logger.info(
+            f"Retrieved {len(retrieved_ids)} items for session {session_id[:12]}..."
+        )
+
     return {
-        "context": "\n".join(context_parts),
+        "context": context_text,
         "project": project,
         "pending_backfill": len(pending) if pending else 0,
+        "retrieved_count": len(retrieved_ids),
     }
 
 

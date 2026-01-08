@@ -571,6 +571,8 @@ class GraphClient:
 
     def queryProjectFacts(self, project: str, limit: int = 20):
         """Get project facts (conventions, tools, patterns)."""
+        logger.debug(f"queryProjectFacts(project={project}, limit={limit})")
+        start = time.time()
         with self.driver.session() as session:
             result = session.run(
                 """
@@ -582,7 +584,10 @@ class GraphClient:
                 project=project,
                 limit=limit,
             )
-            return [dict(record["pf"]) for record in result]
+            records = [dict(record["pf"]) for record in result]
+        duration = int((time.time() - start) * 1000)
+        logger.debug(f"queryProjectFacts returned {len(records)} items ({duration}ms)")
+        return records
 
     # === Domain 2: Chunk Index ===
 
@@ -685,6 +690,50 @@ class GraphClient:
                 count=data.get("count"),
                 duration_ms=data.get("duration_ms"),
             )
+
+    def recordRetrieval(
+        self,
+        session_id: str,
+        project: str,
+        retrieved_ids: list[str],
+        context_summary: str,
+    ):
+        """Record what context was retrieved during session start."""
+        with self.driver.session() as session:
+            session.run(
+                """
+                CREATE (r:Retrieval {
+                    id: $id,
+                    session_id: $session_id,
+                    project: $project,
+                    user_id: $user_id,
+                    timestamp: datetime(),
+                    retrieved_ids: $retrieved_ids,
+                    retrieved_count: $count,
+                    context_summary: $context_summary
+                })
+                """,
+                id=f"retrieval-{uuid.uuid4().hex[:12]}",
+                session_id=session_id,
+                project=project,
+                user_id=self.user_id,
+                retrieved_ids=retrieved_ids,
+                count=len(retrieved_ids),
+                context_summary=context_summary[:2000],
+            )
+
+    def queryRetrievals(self, project: str, limit: int = 50) -> list[dict]:
+        """Get recent retrieval events."""
+        with self.driver.session() as session:
+            result = session.run(
+                """
+                MATCH (r:Retrieval {project: $project})
+                RETURN r ORDER BY r.timestamp DESC LIMIT $limit
+                """,
+                project=project,
+                limit=limit,
+            )
+            return [dict(record["r"]) for record in result]
 
     # === Metrics ===
 

@@ -35,9 +35,12 @@
                 <div class="navbar-item has-dropdown is-hoverable">
                     <a class="navbar-link">More</a>
                     <div class="navbar-dropdown">
+                        <a class="navbar-item" href="/project-facts?project={{ project }}">Project Facts</a>
                         <a class="navbar-item" href="/failed-approaches?project={{ project }}">Failed Approaches</a>
                         <a class="navbar-item" href="/exceptions?project={{ project }}">Exceptions</a>
                         <a class="navbar-item" href="/questions?project={{ project }}">Questions</a>
+                        <hr class="navbar-divider">
+                        <a class="navbar-item" href="/retrievals?project={{ project }}">Retrievals</a>
                     </div>
                 </div>
             </div>
@@ -123,6 +126,18 @@
                 {key: 'answer', label: 'Answer', sortable: false, truncate: true},
                 {key: 'context', label: 'Context', sortable: false, truncate: true},
                 {key: 'timestamp', label: 'Date', sortable: true, format: 'date'}
+            ],
+            'project-facts': [
+                {key: 'fact', label: 'Fact', sortable: false, truncate: true},
+                {key: 'category', label: 'Category', sortable: true},
+                {key: 'context', label: 'Context', sortable: false, truncate: true},
+                {key: 'timestamp', label: 'Date', sortable: true, format: 'date'}
+            ],
+            retrievals: [
+                {key: 'session_id', label: 'Session', sortable: true, truncate: true},
+                {key: 'retrieved_count', label: 'Items', sortable: true},
+                {key: 'context_summary', label: 'Context Injected', sortable: false, truncate: true},
+                {key: 'timestamp', label: 'Date', sortable: true, format: 'date'}
             ]
         };
 
@@ -130,7 +145,8 @@
             decisions: {status: ['curated', 'developmental']},
             corrections: {severity: ['minor', 'significant', 'critical']},
             insights: {category: ['realization', 'analysis', 'strategy', 'personal', 'synthesis']},
-            exceptions: {scope: ['one-time', 'conditional', 'new-precedent']}
+            exceptions: {scope: ['one-time', 'conditional', 'new-precedent']},
+            'project-facts': {category: ['tool', 'pattern', 'convention', 'environment', 'constraint', 'workflow']}
         };
 
         let allData = [];

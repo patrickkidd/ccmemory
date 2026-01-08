@@ -7,6 +7,9 @@ Context graph for persistent memory across Claude Code sessions.
 - After changes, provide concise verification steps for the user
 - **CRITICAL** Self-learn: When learning new project conventions/rules, update this file or add indexed sub-folder CLAUDE.md files. Keep instructions concise with lossless compression.
 - Continuously optimize organization of all CLAUDE.md instruction files
+- Reference `doc/PROJECT_VISION.md` for intended behavior; report any implementation/vision misalignments
+- Always interact with me so as to start or restart the debug target that you need to test, instead of using docker containers to debug.
+- The dsahboard debug target is running on port 8889
 
 ## Session Startup Requirement
 
@@ -95,7 +98,7 @@ Container-internal (set in docker-compose.yml):
 2. Domain 2 (Markdown + Neo4j index): Reference knowledge — cached URLs, PDFs
 
 **Node Types (Domain 1):**
-- Session, Decision, Correction, Exception, Insight, Question, FailedApproach, Reference
+- Session, Decision, Correction, Exception, Insight, Question, FailedApproach, ProjectFact, Reference
 
 **Detection Flow:**
 1. Stop hook fires after each Claude response
@@ -117,3 +120,17 @@ uv run pytest tests/integration -v -m integration
 # All tests
 uv run pytest tests/ -v
 ```
+
+## Dashboard
+
+Flask app in `dashboard/` with templates in `dashboard/templates/`.
+
+**Keep in sync when adding node types:**
+1. `app.py`: `_DETAIL_PAGE_CONFIG` dict — route + title
+2. `app.py`: `/api/<type>` endpoint — query Neo4j
+3. `app.py`: `/api/metrics` — add count to response
+4. `dashboard.html`: navbar dropdown, metric card, JS loadMetrics
+5. `detailpage.html`: navbar dropdown, `columnConfig`, `filterOptions`
+6. `doc/NEO4J_COOKBOOK.md`: add query examples
+
+**Current pages:** decisions, corrections, insights, sessions, failed-approaches, exceptions, questions, project-facts

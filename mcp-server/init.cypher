@@ -83,3 +83,10 @@ CREATE CONSTRAINT telemetry_event_id IF NOT EXISTS FOR (t:TelemetryEvent) REQUIR
 CREATE INDEX telemetry_type IF NOT EXISTS FOR (t:TelemetryEvent) ON (t.event_type);
 CREATE INDEX telemetry_time IF NOT EXISTS FOR (t:TelemetryEvent) ON (t.timestamp);
 CREATE INDEX telemetry_project IF NOT EXISTS FOR (t:TelemetryEvent) ON (t.project);
+
+// === RETRIEVALS ===
+
+CREATE CONSTRAINT retrieval_id IF NOT EXISTS FOR (r:Retrieval) REQUIRE r.id IS UNIQUE;
+CREATE INDEX retrieval_session IF NOT EXISTS FOR (r:Retrieval) ON (r.session_id);
+CREATE INDEX retrieval_project IF NOT EXISTS FOR (r:Retrieval) ON (r.project);
+CREATE INDEX retrieval_time IF NOT EXISTS FOR (r:Retrieval) ON (r.timestamp);

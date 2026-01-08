@@ -82,9 +82,12 @@
                 <div class="navbar-item has-dropdown is-hoverable">
                     <a class="navbar-link">More</a>
                     <div class="navbar-dropdown">
+                        <a class="navbar-item" href="/project-facts?project={{ project }}">Project Facts</a>
                         <a class="navbar-item" href="/failed-approaches?project={{ project }}">Failed Approaches</a>
                         <a class="navbar-item" href="/exceptions?project={{ project }}">Exceptions</a>
                         <a class="navbar-item" href="/questions?project={{ project }}">Questions</a>
+                        <hr class="navbar-divider">
+                        <a class="navbar-item" href="/retrievals?project={{ project }}">Retrievals</a>
                     </div>
                 </div>
             </div>
@@ -143,15 +146,15 @@
                     </a>
                 </div>
                 <div class="column is-3">
-                    <div class="box metric-card">
-                        <p class="metric-value" id="reuse-rate">-</p>
-                        <p class="metric-label">Decision Reuse Rate</p>
-                    </div>
+                    <a href="/project-facts?project={{ project }}" class="box metric-card">
+                        <p class="metric-value has-text-link" id="project-facts">-</p>
+                        <p class="metric-label">Project Facts</p>
+                    </a>
                 </div>
                 <div class="column is-3">
                     <div class="box metric-card">
-                        <p class="metric-value" id="density">-</p>
-                        <p class="metric-label">Graph Density</p>
+                        <p class="metric-value" id="reuse-rate">-</p>
+                        <p class="metric-label">Decision Reuse Rate</p>
                     </div>
                 </div>
             </div>
@@ -246,8 +249,8 @@
                 document.getElementById('insights').textContent = data.total_insights;
                 document.getElementById('sessions').textContent = data.total_sessions;
                 document.getElementById('failed').textContent = data.total_failed_approaches;
+                document.getElementById('project-facts').textContent = data.total_project_facts;
                 document.getElementById('reuse-rate').textContent = (data.decision_reuse_rate * 100).toFixed(1) + '%';
-                document.getElementById('density').textContent = data.graph_density.toFixed(2);
             } catch (error) {
                 console.error('Failed to load metrics:', error);
             }

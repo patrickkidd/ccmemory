@@ -1,19 +1,15 @@
 """Flask dashboard for ccmemory."""
 
+import io
+import json
 import logging
 import os
+import time
+import zipfile
 
 if os.getenv("GEVENT_SUPPORT") == "True":
     from gevent import monkey
     monkey.patch_all()
-
-import hashlib
-import io
-import json
-import time
-import uuid
-import zipfile
-from datetime import datetime
 
 from flask import Flask, render_template, jsonify, request
 from neo4j import GraphDatabase
@@ -78,6 +74,8 @@ _DETAIL_PAGE_CONFIG = {
     "failed-approaches": {"title": "Failed Approaches"},
     "exceptions": {"title": "Exceptions"},
     "questions": {"title": "Questions"},
+    "project-facts": {"title": "Project Facts"},
+    "retrievals": {"title": "Retrievals"},
 }
 
 
@@ -119,8 +117,10 @@ def metrics():
             OPTIONAL MATCH (s:Session {project: $project})
             WITH total_decisions, curated, total_corrections, total_insights, count(s) as total_sessions
             OPTIONAL MATCH (f:FailedApproach {project: $project})
+            WITH total_decisions, curated, total_corrections, total_insights, total_sessions, count(f) as total_failed_approaches
+            OPTIONAL MATCH (pf:ProjectFact {project: $project})
             RETURN total_decisions, curated, total_corrections, total_insights,
-                   total_sessions, count(f) as total_failed_approaches
+                   total_sessions, total_failed_approaches, count(pf) as total_project_facts
             """,
             project=project,
         )
@@ -145,6 +145,7 @@ def metrics():
                 "total_insights": record["total_insights"],
                 "total_sessions": total_sessions,
                 "total_failed_approaches": record["total_failed_approaches"],
+                "total_project_facts": record["total_project_facts"],
                 "decision_reuse_rate": reuse_rate,
                 "graph_density": 0.0,
                 "reexplanation_rate": reexplanation_rate,
@@ -348,6 +349,54 @@ def questions():
             limit=limit,
         )
         return jsonify([serialize_node(dict(r["q"])) for r in result])
+
+
+@app.route("/api/project-facts")
+def project_facts():
+    project = request.args.get("project", "")
+    category = request.args.get("category")
+    limit = int(request.args.get("limit", 50))
+    driver = getDriver()
+
+    with driver.session() as session:
+        if category:
+            result = session.run(
+                """
+                MATCH (pf:ProjectFact {project: $project, category: $category})
+                RETURN pf ORDER BY pf.timestamp DESC LIMIT $limit
+                """,
+                project=project,
+                category=category,
+                limit=limit,
+            )
+        else:
+            result = session.run(
+                """
+                MATCH (pf:ProjectFact {project: $project})
+                RETURN pf ORDER BY pf.timestamp DESC LIMIT $limit
+                """,
+                project=project,
+                limit=limit,
+            )
+        return jsonify([serialize_node(dict(r["pf"])) for r in result])
+
+
+@app.route("/api/retrievals")
+def retrievals():
+    project = request.args.get("project", "")
+    limit = int(request.args.get("limit", 50))
+    driver = getDriver()
+
+    with driver.session() as session:
+        result = session.run(
+            """
+            MATCH (r:Retrieval {project: $project})
+            RETURN r ORDER BY r.timestamp DESC LIMIT $limit
+            """,
+            project=project,
+            limit=limit,
+        )
+        return jsonify([serialize_node(dict(r["r"])) for r in result])
 
 
 @app.route("/api/projects")
