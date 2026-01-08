@@ -136,3 +136,15 @@ In team mode (`CCMEMORY_USER_ID` set):
 - `developmental` decisions are only visible to their creator
 - `curated` decisions are visible to all team members
 - Use `promoteDecisions` to make decisions team-visible after they're validated
+
+## Error Handling: Session Lost
+
+If any ccmemory tool returns a response with `"error": "session_not_found"` and `"ask_user": true`, the MCP server session was lost (typically due to server restart).
+
+**You MUST use AskUserQuestion** to ask the user:
+
+> "The ccmemory server session was lost. Would you like to:"
+> - **Retry** — Re-establishes the session (the session_start hook will run again on your next message)
+> - **Continue without saving** — Skip saving this context to the knowledge graph
+
+If the user chooses "Retry", inform them the session will re-establish on the next interaction. If they choose "Continue without saving", proceed normally but note that the current context won't be persisted.

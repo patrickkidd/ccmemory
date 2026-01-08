@@ -8,8 +8,10 @@ Context graph for persistent memory across Claude Code sessions.
 - **CRITICAL** Self-learn: When learning new project conventions/rules, update this file or add indexed sub-folder CLAUDE.md files. Keep instructions concise with lossless compression.
 - Continuously optimize organization of all CLAUDE.md instruction files
 - Reference `doc/PROJECT_VISION.md` for intended behavior; report any implementation/vision misalignments
-- Always interact with me so as to start or restart the debug target that you need to test, instead of using docker containers to debug.
-- The dsahboard debug target is running on port 8889
+- Use debug targets (not docker containers) for testing; ask user to start/restart as needed
+- Dashboard debug target: port 8889
+- Only rebuild/redeploy docker images when debugging container-specific issues
+- **AS_BUILT.md**: Read `doc/AS_BUILT.md` before making changes. Update it after any non-obvious implementation change (schema, session flow, error handling, hooks, etc.)
 
 ## Session Startup Requirement
 
@@ -133,4 +135,4 @@ Flask app in `dashboard/` with templates in `dashboard/templates/`.
 5. `detailpage.html`: navbar dropdown, `columnConfig`, `filterOptions`
 6. `doc/NEO4J_COOKBOOK.md`: add query examples
 
-**Current pages:** decisions, corrections, insights, sessions, failed-approaches, exceptions, questions, project-facts
+**Current pages:** decisions, corrections, insights, sessions, failed-approaches, exceptions, questions, project-facts, retrievals

@@ -11,6 +11,24 @@ from ..context import getCurrentProject, getCurrentSessionId
 from .logging import logTool
 
 
+def _sessionError() -> dict:
+    return {
+        "error": "session_not_found",
+        "message": "MCP server session context was lost (server may have restarted).",
+        "ask_user": True,
+        "ask_user_options": [
+            {"label": "Retry (re-establish session)", "action": "retry"},
+            {"label": "Continue without saving", "action": "skip"},
+        ],
+        "instructions": (
+            "Use AskUserQuestion to ask the user: "
+            "'The ccmemory server session was lost. Would you like to retry "
+            "(which will re-establish the session) or continue without saving "
+            "this context to the knowledge graph?'"
+        ),
+    }
+
+
 def registerRecordTools(mcp: FastMCP):
     """Register all record tools with the MCP server."""
 
@@ -22,7 +40,7 @@ def registerRecordTools(mcp: FastMCP):
         options_considered: Optional[str] = None,
         revisit_trigger: Optional[str] = None,
         sets_precedent: bool = False,
-        session_id: Optional[str] = None
+        session_id: Optional[str] = None,
     ) -> dict:
         """Record a decision to the context graph.
 
@@ -59,12 +77,12 @@ def registerRecordTools(mcp: FastMCP):
                 session_id=effective_session,
                 description=description,
                 embedding=embedding,
-                **kwargs
+                **kwargs,
             )
         else:
             project = getCurrentProject()
             if not project:
-                return {"error": "No active session. Start a Claude Code session first."}
+                return _sessionError()
             driver = client.driver
             with driver.session() as db_session:
                 db_session.run(
@@ -83,7 +101,7 @@ def registerRecordTools(mcp: FastMCP):
                     project=project,
                     user_id=client.user_id,
                     embedding=embedding,
-                    props=kwargs
+                    props=kwargs,
                 )
 
         return {"decision_id": decision_id, "status": "recorded"}
@@ -94,7 +112,7 @@ def registerRecordTools(mcp: FastMCP):
         wrong_belief: str,
         right_belief: str,
         severity: str = "significant",
-        session_id: Optional[str] = None
+        session_id: Optional[str] = None,
     ) -> dict:
         """Record a correction to Claude's understanding.
 
@@ -113,7 +131,7 @@ def registerRecordTools(mcp: FastMCP):
         kwargs = {
             "severity": severity,
             "detection_method": "explicit_command",
-            "detection_confidence": 1.0
+            "detection_confidence": 1.0,
         }
 
         effective_session = session_id or getCurrentSessionId()
@@ -124,12 +142,12 @@ def registerRecordTools(mcp: FastMCP):
                 wrong_belief=wrong_belief,
                 right_belief=right_belief,
                 embedding=embedding,
-                **kwargs
+                **kwargs,
             )
         else:
             project = getCurrentProject()
             if not project:
-                return {"error": "No active session. Start a Claude Code session first."}
+                return _sessionError()
             driver = client.driver
             with driver.session() as db_session:
                 db_session.run(
@@ -149,7 +167,7 @@ def registerRecordTools(mcp: FastMCP):
                     project=project,
                     user_id=client.user_id,
                     embedding=embedding,
-                    props=kwargs
+                    props=kwargs,
                 )
 
         return {"correction_id": correction_id, "status": "recorded"}
@@ -160,7 +178,7 @@ def registerRecordTools(mcp: FastMCP):
         rule_broken: str,
         justification: str,
         scope: str = "one-time",
-        session_id: Optional[str] = None
+        session_id: Optional[str] = None,
     ) -> dict:
         """Record an exception to normal rules.
 
@@ -179,7 +197,7 @@ def registerRecordTools(mcp: FastMCP):
         kwargs = {
             "scope": scope,
             "detection_method": "explicit_command",
-            "detection_confidence": 1.0
+            "detection_confidence": 1.0,
         }
 
         effective_session = session_id or getCurrentSessionId()
@@ -190,12 +208,12 @@ def registerRecordTools(mcp: FastMCP):
                 rule_broken=rule_broken,
                 justification=justification,
                 embedding=embedding,
-                **kwargs
+                **kwargs,
             )
         else:
             project = getCurrentProject()
             if not project:
-                return {"error": "No active session. Start a Claude Code session first."}
+                return _sessionError()
             driver = client.driver
             with driver.session() as db_session:
                 db_session.run(
@@ -215,7 +233,7 @@ def registerRecordTools(mcp: FastMCP):
                     project=project,
                     user_id=client.user_id,
                     embedding=embedding,
-                    props=kwargs
+                    props=kwargs,
                 )
 
         return {"exception_id": exception_id, "status": "recorded"}
@@ -227,7 +245,7 @@ def registerRecordTools(mcp: FastMCP):
         category: str = "realization",
         detail: Optional[str] = None,
         implications: Optional[str] = None,
-        session_id: Optional[str] = None
+        session_id: Optional[str] = None,
     ) -> dict:
         """Record an insight or realization.
 
@@ -244,10 +262,7 @@ def registerRecordTools(mcp: FastMCP):
         text_for_embedding = f"{summary} {detail or ''} {implications or ''}"
         embedding = getEmbedding(text_for_embedding)
 
-        kwargs = {
-            "detection_method": "explicit_command",
-            "detection_confidence": 1.0
-        }
+        kwargs = {"detection_method": "explicit_command", "detection_confidence": 1.0}
         if detail:
             kwargs["detail"] = detail
         if implications:
@@ -261,12 +276,12 @@ def registerRecordTools(mcp: FastMCP):
                 category=category,
                 summary=summary,
                 embedding=embedding,
-                **kwargs
+                **kwargs,
             )
         else:
             project = getCurrentProject()
             if not project:
-                return {"error": "No active session. Start a Claude Code session first."}
+                return _sessionError()
             driver = client.driver
             with driver.session() as db_session:
                 db_session.run(
@@ -286,7 +301,7 @@ def registerRecordTools(mcp: FastMCP):
                     project=project,
                     user_id=client.user_id,
                     embedding=embedding,
-                    props=kwargs
+                    props=kwargs,
                 )
 
         return {"insight_id": insight_id, "status": "recorded"}
@@ -297,7 +312,7 @@ def registerRecordTools(mcp: FastMCP):
         question: str,
         answer: str,
         context: Optional[str] = None,
-        session_id: Optional[str] = None
+        session_id: Optional[str] = None,
     ) -> dict:
         """Record a meaningful Q&A exchange.
 
@@ -310,10 +325,7 @@ def registerRecordTools(mcp: FastMCP):
         client = getClient()
         question_id = f"question-{uuid.uuid4().hex[:8]}"
 
-        kwargs = {
-            "detection_method": "explicit_command",
-            "detection_confidence": 1.0
-        }
+        kwargs = {"detection_method": "explicit_command", "detection_confidence": 1.0}
         if context:
             kwargs["context"] = context
 
@@ -324,12 +336,12 @@ def registerRecordTools(mcp: FastMCP):
                 session_id=effective_session,
                 question=question,
                 answer=answer,
-                **kwargs
+                **kwargs,
             )
         else:
             project = getCurrentProject()
             if not project:
-                return {"error": "No active session. Start a Claude Code session first."}
+                return _sessionError()
             driver = client.driver
             with driver.session() as db_session:
                 db_session.run(
@@ -347,7 +359,7 @@ def registerRecordTools(mcp: FastMCP):
                     answer=answer,
                     project=project,
                     user_id=client.user_id,
-                    props=kwargs
+                    props=kwargs,
                 )
 
         return {"question_id": question_id, "status": "recorded"}
@@ -355,10 +367,7 @@ def registerRecordTools(mcp: FastMCP):
     @mcp.tool()
     @logTool
     async def recordFailedApproach(
-        approach: str,
-        outcome: str,
-        lesson: str,
-        session_id: Optional[str] = None
+        approach: str, outcome: str, lesson: str, session_id: Optional[str] = None
     ) -> dict:
         """Record an approach that was tried and didn't work.
 
@@ -371,10 +380,7 @@ def registerRecordTools(mcp: FastMCP):
         client = getClient()
         fa_id = f"failed-{uuid.uuid4().hex[:8]}"
 
-        kwargs = {
-            "detection_method": "explicit_command",
-            "detection_confidence": 1.0
-        }
+        kwargs = {"detection_method": "explicit_command", "detection_confidence": 1.0}
 
         effective_session = session_id or getCurrentSessionId()
         if effective_session:
@@ -384,12 +390,12 @@ def registerRecordTools(mcp: FastMCP):
                 approach=approach,
                 outcome=outcome,
                 lesson=lesson,
-                **kwargs
+                **kwargs,
             )
         else:
             project = getCurrentProject()
             if not project:
-                return {"error": "No active session. Start a Claude Code session first."}
+                return _sessionError()
             driver = client.driver
             with driver.session() as db_session:
                 db_session.run(
@@ -409,7 +415,7 @@ def registerRecordTools(mcp: FastMCP):
                     lesson=lesson,
                     project=project,
                     user_id=client.user_id,
-                    props=kwargs
+                    props=kwargs,
                 )
 
         return {"failed_approach_id": fa_id, "status": "recorded"}
@@ -421,7 +427,7 @@ def registerRecordTools(mcp: FastMCP):
         ref_type: str = "url",
         description: Optional[str] = None,
         context: Optional[str] = None,
-        session_id: Optional[str] = None
+        session_id: Optional[str] = None,
     ) -> dict:
         """Record a reference to an external resource.
 
@@ -435,10 +441,7 @@ def registerRecordTools(mcp: FastMCP):
         client = getClient()
         ref_id = f"ref-{uuid.uuid4().hex[:8]}"
 
-        kwargs = {
-            "detection_method": "explicit_command",
-            "detection_confidence": 1.0
-        }
+        kwargs = {"detection_method": "explicit_command", "detection_confidence": 1.0}
         if description:
             kwargs["description"] = description
         if context:
@@ -451,12 +454,12 @@ def registerRecordTools(mcp: FastMCP):
                 session_id=effective_session,
                 ref_type=ref_type,
                 uri=uri,
-                **kwargs
+                **kwargs,
             )
         else:
             project = getCurrentProject()
             if not project:
-                return {"error": "No active session. Start a Claude Code session first."}
+                return _sessionError()
             driver = client.driver
             with driver.session() as db_session:
                 db_session.run(
@@ -474,7 +477,7 @@ def registerRecordTools(mcp: FastMCP):
                     uri=uri,
                     project=project,
                     user_id=client.user_id,
-                    props=kwargs
+                    props=kwargs,
                 )
 
         return {"reference_id": ref_id, "status": "recorded"}
