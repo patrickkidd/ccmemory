@@ -143,7 +143,8 @@ class GraphClient:
         logger.debug(f"createDecision(id={decision_id[:12]}...)")
         start = time.time()
         with self.driver.session() as session:
-            session.run(
+            # Create the decision node
+            result = session.run(
                 """
                 MATCH (s:Session {id: $session_id})
                 CREATE (d:Decision {id: $decision_id})
@@ -155,6 +156,7 @@ class GraphClient:
                     d.embedding = $embedding
                 SET d += $props
                 CREATE (s)-[:DECIDED]->(d)
+                RETURN s.project as project
                 """,
                 session_id=session_id,
                 decision_id=decision_id,
@@ -162,6 +164,26 @@ class GraphClient:
                 embedding=embedding,
                 props=kwargs,
             )
+            record = result.single()
+            project = record["project"] if record else None
+
+            # Auto-link to similar prior decisions via CITES
+            if project and embedding:
+                session.run(
+                    """
+                    MATCH (d:Decision {id: $decision_id})
+                    CALL db.index.vector.queryNodes('decision_embedding', 5, $embedding)
+                    YIELD node, score
+                    WHERE node.project = $project
+                      AND node.id <> $decision_id
+                      AND score > 0.8
+                    CREATE (d)-[:CITES {similarity: score, auto: true}]->(node)
+                    """,
+                    decision_id=decision_id,
+                    embedding=embedding,
+                    project=project,
+                )
+
         duration = int((time.time() - start) * 1000)
         logger.info(
             f"Created Decision id={decision_id[:12]}... ({duration}ms)",

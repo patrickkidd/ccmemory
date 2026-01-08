@@ -9,8 +9,9 @@ Context graph for persistent memory across Claude Code sessions.
 - Continuously optimize organization of all CLAUDE.md instruction files
 - Reference `doc/PROJECT_VISION.md` for intended behavior; report any implementation/vision misalignments
 - Use debug targets (not docker containers) for testing; ask user to start/restart as needed
-- Dashboard debug target: port 8889
+- Dashboard debug target: port 8765
 - Only rebuild/redeploy docker images when debugging container-specific issues
+- Use `uv` for all Python commands (e.g., `uv run pytest`, `uv pip install`)
 - **AS_BUILT.md**: Read `doc/AS_BUILT.md` before making changes. Update it after any non-obvious implementation change (schema, session flow, error handling, hooks, etc.)
 
 ## Session Startup Requirement

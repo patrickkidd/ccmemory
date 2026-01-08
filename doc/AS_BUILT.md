@@ -179,7 +179,7 @@ curl -s -X POST "http://localhost:8766/ccmemory_session_start" \
 
 ## Dashboard
 
-Flask app at `dashboard/app.py`, runs on port 8888/8889.
+Flask app at `dashboard/app.py`, runs on port 8765.
 
 ### Pages
 

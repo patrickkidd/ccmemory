@@ -128,7 +128,7 @@ ccmemory dashboard           # Start web UI (localhost:8765)
 
 Two debug targets are available in `.vscode/launch.json`:
 
-- **Dashboard (debug)** — Flask dashboard on port 8888 (gevent server, no auto-reload)
+- **Dashboard (debug)** — Flask dashboard on port 8765 (gevent server, no auto-reload)
 - **MCP Server (debug)** — MCP HTTP server on port 8766
 
 Both targets set `PYTHONUNBUFFERED=1` and `justMyCode=false` for full debugging.

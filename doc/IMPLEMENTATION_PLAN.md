@@ -2041,7 +2041,7 @@ def team_metrics():
     })
 
 if __name__ == "__main__":
-    app.run(port=8888, debug=True)
+    app.run(port=8765, debug=True)
 ```
 
 **File:** `dashboard/templates/dashboard.html`
@@ -2360,7 +2360,7 @@ def stop():
 
 @main.command()
 @click.option('--team', is_flag=True, help='Show enterprise team view')
-@click.option('--port', default=8888, help='Dashboard port')
+@click.option('--port', default=8765, help='Dashboard port')
 def dashboard(team, port):
     """Open the ccmemory dashboard."""
     sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'dashboard'))

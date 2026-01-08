@@ -189,6 +189,156 @@ def recent():
         return jsonify(formatted)
 
 
+@app.route("/api/graph")
+def graph():
+    project = request.args.get("project", "")
+    limit = int(request.args.get("limit", 100))
+    node_types = request.args.getlist("types") or [
+        "Decision", "Correction", "Exception", "Insight",
+        "Question", "FailedApproach", "ProjectFact"
+    ]
+    driver = getDriver()
+
+    with driver.session() as session:
+        label_filter = " OR ".join(f"n:{t}" for t in node_types)
+
+        result = session.run(
+            f"""
+            MATCH (n {{project: $project}})
+            WHERE {label_filter}
+            WITH n ORDER BY n.timestamp DESC LIMIT $limit
+            WITH collect(n) as nodes
+
+            // Get relationships between collected nodes
+            UNWIND nodes as n
+            OPTIONAL MATCH (n)-[r]->(m)
+            WHERE m IN nodes
+            WITH nodes, collect(DISTINCT {{
+                source: n.id,
+                target: m.id,
+                type: type(r)
+            }}) as rels
+
+            // Also get session relationships
+            UNWIND nodes as n
+            OPTIONAL MATCH (s:Session)-[sr]->(n)
+            WITH nodes, rels, collect(DISTINCT {{
+                id: s.id,
+                label: coalesce(s.summary, substring(s.id, 0, 8)),
+                type: 'Session',
+                timestamp: s.started_at
+            }}) as session_nodes,
+            collect(DISTINCT {{
+                source: s.id,
+                target: n.id,
+                type: type(sr)
+            }}) as session_rels
+
+            RETURN [n in nodes | {{
+                id: n.id,
+                label: coalesce(
+                    n.description,
+                    n.summary,
+                    n.rule_broken,
+                    n.wrong_belief,
+                    n.fact,
+                    n.question,
+                    n.approach,
+                    n.id
+                )[0..60],
+                type: labels(n)[0],
+                timestamp: n.timestamp,
+                status: n.status,
+                category: n.category,
+                severity: n.severity,
+                scope: n.scope,
+                answer: n.answer,
+                outcome: n.outcome,
+                lesson: n.lesson
+            }}] as nodes,
+            rels + session_rels as edges,
+            session_nodes
+            """,
+            project=project,
+            limit=limit,
+        )
+
+        record = result.single()
+        if not record:
+            return jsonify({"nodes": [], "edges": []})
+
+        nodes = record["nodes"] + [
+            sn for sn in record["session_nodes"] if sn["id"]
+        ]
+        edges = [
+            e for e in record["edges"]
+            if e["source"] and e["target"]
+        ]
+
+        for node in nodes:
+            if node.get("timestamp") and hasattr(node["timestamp"], "isoformat"):
+                node["timestamp"] = node["timestamp"].isoformat()
+
+        return jsonify({"nodes": nodes, "edges": edges})
+
+
+@app.route("/api/insights/proactive")
+def proactive_insights():
+    project = request.args.get("project", "")
+    driver = getDriver()
+
+    insights = []
+    with driver.session() as session:
+        result = session.run(
+            """
+            MATCH (d:Decision {project: $project})<-[r:CITES]-()
+            WITH d, count(r) as cite_count
+            WHERE cite_count >= 2
+            RETURN d.id as id, d.description as description, cite_count
+            ORDER BY cite_count DESC LIMIT 3
+            """,
+            project=project,
+        )
+        for r in result:
+            insights.append({
+                "type": "highly_cited",
+                "message": f"'{r['description'][:40]}...' cited by {r['cite_count']} decisions",
+                "node_id": r["id"],
+            })
+
+        result = session.run(
+            """
+            MATCH (e:Exception {project: $project})
+            WITH e.rule_broken as rule, count(*) as exception_count
+            WHERE exception_count >= 2 AND rule IS NOT NULL
+            RETURN rule, exception_count
+            ORDER BY exception_count DESC LIMIT 3
+            """,
+            project=project,
+        )
+        for r in result:
+            insights.append({
+                "type": "exception_hotspot",
+                "message": f"'{r['rule'][:30]}...' has {r['exception_count']} exceptions",
+            })
+
+        result = session.run(
+            """
+            MATCH (c:Correction {project: $project})
+            RETURN count(c) as correction_count
+            """,
+            project=project,
+        )
+        record = result.single()
+        if record and record["correction_count"] >= 3:
+            insights.append({
+                "type": "correction_pattern",
+                "message": f"{record['correction_count']} corrections recorded - review for patterns",
+            })
+
+    return jsonify(insights)
+
+
 @app.route("/api/decisions")
 def decisions():
     project = request.args.get("project", "")

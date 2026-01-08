@@ -68,7 +68,7 @@ ccmemory automatically detects and stores the decision. Start a new session and 
 
 Once containers are running, access:
 
-- **Dashboard:** http://localhost:8888 — Browse and manage stored memories
+- **Dashboard:** http://localhost:8765 — Browse and manage stored memories
 - **Neo4j Browser:** http://localhost:7474 — Direct graph database access
 
 ### Visualizing the Graph

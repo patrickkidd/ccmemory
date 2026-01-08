@@ -6,62 +6,43 @@
     <title>ccmemory Dashboard - {{ project }}</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@0.9.4/css/bulma.min.css">
     <style>
-        .metric-card {
-            text-align: center;
-        }
-        .metric-value {
-            font-size: 2.5rem;
-            font-weight: bold;
-        }
-        .metric-label {
-            font-size: 0.9rem;
-        }
-        .context-item {
-            margin-bottom: 1rem;
-            padding: 1rem;
-            border-radius: 4px;
-        }
+        .metric-card { text-align: center; }
+        .metric-value { font-size: 2.5rem; font-weight: bold; }
+        .metric-label { font-size: 0.9rem; }
+        .context-item { margin-bottom: 1rem; padding: 1rem; border-radius: 4px; }
         .context-decision { border-left: 4px solid hsl(217, 71%, 53%); }
         .context-correction { border-left: 4px solid hsl(348, 100%, 61%); }
         .context-insight { border-left: 4px solid hsl(141, 53%, 53%); }
         .context-question { border-left: 4px solid hsl(48, 100%, 67%); }
         .context-failed { border-left: 4px solid hsl(344, 89%, 54%); }
-        .coefficient-gauge {
-            width: 200px;
-            height: 100px;
-            margin: 0 auto;
-        }
-        .console-log {
-            height: 300px;
-            overflow-y: auto;
-            font-family: monospace;
-            font-size: 0.8rem;
-            padding: 0.5rem;
-        }
-        .filter-btn.is-active {
-            background-color: hsl(171, 100%, 41%);
-            border-color: transparent;
-            color: #fff;
-        }
-        .filter-btn:not(.is-active) {
-            opacity: 0.5;
-        }
-        .drop-zone {
-            border: 2px dashed;
-            cursor: pointer;
-        }
-        .drop-zone.hover {
-            background-color: hsl(217, 71%, 90%);
-        }
-        @media (prefers-color-scheme: dark) {
-            .drop-zone.hover {
-                background-color: hsl(217, 50%, 20%);
-            }
-        }
+        .console-log { height: 300px; overflow-y: auto; font-family: monospace; font-size: 0.8rem; padding: 0.5rem; }
+        .filter-btn.is-active { background-color: hsl(171, 100%, 41%); border-color: transparent; color: #fff; }
+        .filter-btn:not(.is-active) { opacity: 0.5; }
+        .drop-zone { border: 2px dashed; cursor: pointer; }
+        .drop-zone.hover { background-color: hsl(217, 71%, 90%); }
+        @media (prefers-color-scheme: dark) { .drop-zone.hover { background-color: hsl(217, 50%, 20%); } }
         .hidden { display: none; }
         a.metric-card { text-decoration: none; color: inherit; display: block; transition: transform 0.1s; }
         a.metric-card:hover { transform: scale(1.02); }
+        /* Graph styles */
+        #cy { height: 450px; border-radius: 4px; }
+        .graph-legend { display: inline-flex; gap: 0.75rem; flex-wrap: wrap; justify-content: center; }
+        .graph-filters { display: flex; gap: 0.75rem; flex-wrap: wrap; }
+        .legend-item { display: inline-flex; align-items: center; gap: 0.25rem; font-size: 0.8rem; }
+        .legend-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; }
+        .legend-dot.decision { background: hsl(217, 71%, 53%); }
+        .legend-dot.correction { background: hsl(348, 100%, 61%); }
+        .legend-dot.exception { background: hsl(48, 100%, 67%); }
+        .legend-dot.insight { background: hsl(141, 71%, 48%); }
+        .legend-dot.question { background: hsl(271, 71%, 53%); }
+        .legend-dot.failed { background: hsl(14, 100%, 53%); }
+        .legend-dot.fact { background: hsl(198, 71%, 53%); }
+        .legend-dot.session { background: hsl(0, 0%, 48%); }
+        #node-detail { max-height: 200px; overflow-y: auto; display: none; }
+        #node-detail.is-visible { display: block; }
+        .node-detail-label { font-weight: 600; }
     </style>
+    <script src="https://unpkg.com/cytoscape@3.28.1/dist/cytoscape.min.js"></script>
 </head>
 <body>
     <nav class="navbar is-dark">
@@ -183,12 +164,50 @@
                 </div>
             </div>
 
-            <!-- Recent Context -->
+            <!-- Knowledge Graph -->
             <div class="columns">
                 <div class="column">
-                    <h2 class="title is-4">Recent Context</h2>
-                    <div id="recent-context">
-                        <progress class="progress is-small is-primary" max="100">Loading...</progress>
+                    <div class="box">
+                        <h2 class="title is-4">Knowledge Graph</h2>
+                        <div id="cy"></div>
+                        <div class="has-text-centered mt-3">
+                            <div class="graph-legend" id="graph-legend"></div>
+                        </div>
+                        <div class="mt-3">
+                            <div class="is-flex is-align-items-center is-flex-wrap-wrap" style="gap: 0.5rem;">
+                                <div class="buttons are-small mb-0">
+                                    <button class="button is-small" onclick="checkAllFilters()">All</button>
+                                    <button class="button is-small" onclick="clearAllFilters()">None</button>
+                                </div>
+                                <div class="graph-filters">
+                                    <label class="checkbox"><input type="checkbox" id="show-decisions" checked onchange="updateGraph()"> Decisions</label>
+                                    <label class="checkbox"><input type="checkbox" id="show-corrections" checked onchange="updateGraph()"> Corrections</label>
+                                    <label class="checkbox"><input type="checkbox" id="show-exceptions" onchange="updateGraph()"> Exceptions</label>
+                                    <label class="checkbox"><input type="checkbox" id="show-insights" onchange="updateGraph()"> Insights</label>
+                                    <label class="checkbox"><input type="checkbox" id="show-questions" onchange="updateGraph()"> Questions</label>
+                                    <label class="checkbox"><input type="checkbox" id="show-failed" onchange="updateGraph()"> Failed</label>
+                                    <label class="checkbox"><input type="checkbox" id="show-facts" checked onchange="updateGraph()"> Facts</label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Node Detail Panel + Proactive Insights -->
+            <div class="columns">
+                <div class="column is-two-thirds">
+                    <div class="box" id="node-detail">
+                        <h3 class="title is-5" id="detail-title"></h3>
+                        <div id="detail-content"></div>
+                    </div>
+                </div>
+                <div class="column is-one-third">
+                    <div class="box" id="proactive-insights">
+                        <h3 class="title is-6">Proactive Insights</h3>
+                        <div id="insights-content">
+                            <p class="has-text-grey is-size-7">Loading...</p>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -237,6 +256,248 @@
 
     <script>
         const project = "{{ project }}";
+        let cy = null;
+        let graphData = { nodes: [], edges: [] };
+
+        // Cytoscape graph initialization
+        async function initGraph() {
+            const types = [];
+            if (document.getElementById('show-decisions').checked) types.push('Decision');
+            if (document.getElementById('show-corrections').checked) types.push('Correction');
+            if (document.getElementById('show-exceptions').checked) types.push('Exception');
+            if (document.getElementById('show-insights').checked) types.push('Insight');
+            if (document.getElementById('show-questions').checked) types.push('Question');
+            if (document.getElementById('show-failed').checked) types.push('FailedApproach');
+            if (document.getElementById('show-facts').checked) types.push('ProjectFact');
+
+            const params = new URLSearchParams({ project, limit: 100 });
+            types.forEach(t => params.append('types', t));
+
+            const response = await fetch(`/api/graph?${params}`);
+            graphData = await response.json();
+
+            const elements = [
+                ...graphData.nodes.map(n => ({
+                    data: { id: n.id, label: n.label, type: n.type, ...n }
+                })),
+                ...graphData.edges.map(e => ({
+                    data: { source: e.source, target: e.target, type: e.type }
+                }))
+            ];
+
+            if (cy) {
+                cy.destroy();
+            }
+
+            cy = cytoscape({
+                container: document.getElementById('cy'),
+                elements: elements,
+                style: [
+                    { selector: 'node', style: {
+                        'label': 'data(label)',
+                        'text-valign': 'bottom',
+                        'text-halign': 'center',
+                        'font-size': '10px',
+                        'text-wrap': 'ellipsis',
+                        'text-max-width': '80px',
+                        'width': 30,
+                        'height': 30
+                    }},
+                    { selector: 'node[type="Decision"]', style: {
+                        'background-color': 'hsl(217, 71%, 53%)'
+                    }},
+                    { selector: 'node[type="Correction"]', style: {
+                        'background-color': 'hsl(348, 100%, 61%)',
+                        'shape': 'diamond'
+                    }},
+                    { selector: 'node[type="Exception"]', style: {
+                        'background-color': 'hsl(48, 100%, 67%)',
+                        'shape': 'triangle'
+                    }},
+                    { selector: 'node[type="Insight"]', style: {
+                        'background-color': 'hsl(141, 71%, 48%)',
+                        'shape': 'ellipse'
+                    }},
+                    { selector: 'node[type="Question"]', style: {
+                        'background-color': 'hsl(271, 71%, 53%)',
+                        'shape': 'round-pentagon'
+                    }},
+                    { selector: 'node[type="FailedApproach"]', style: {
+                        'background-color': 'hsl(14, 100%, 53%)',
+                        'shape': 'octagon'
+                    }},
+                    { selector: 'node[type="ProjectFact"]', style: {
+                        'background-color': 'hsl(198, 71%, 53%)',
+                        'shape': 'round-rectangle'
+                    }},
+                    { selector: 'node[type="Session"]', style: {
+                        'background-color': 'hsl(0, 0%, 48%)',
+                        'shape': 'rectangle',
+                        'width': 20,
+                        'height': 20
+                    }},
+                    { selector: 'edge', style: {
+                        'width': 1,
+                        'line-color': '#888',
+                        'target-arrow-color': '#888',
+                        'target-arrow-shape': 'triangle',
+                        'curve-style': 'bezier',
+                        'opacity': 0.6
+                    }},
+                    { selector: 'edge[type="CITES"]', style: {
+                        'line-style': 'dashed',
+                        'line-color': 'hsl(217, 71%, 53%)'
+                    }},
+                    { selector: 'edge[type="SUPERSEDES"]', style: {
+                        'line-color': 'hsl(348, 100%, 61%)',
+                        'width': 2
+                    }},
+                    { selector: ':selected', style: {
+                        'border-width': 3,
+                        'border-color': 'hsl(171, 100%, 41%)'
+                    }}
+                ],
+                layout: {
+                    name: 'cose',
+                    animate: false,
+                    randomize: false,
+                    nodeRepulsion: 8000,
+                    idealEdgeLength: 100,
+                    edgeElasticity: 100
+                }
+            });
+
+            cy.on('tap', 'node', function(evt) {
+                const node = evt.target.data();
+                showNodeDetail(node);
+            });
+
+            cy.on('tap', function(evt) {
+                if (evt.target === cy) {
+                    document.getElementById('node-detail').classList.remove('is-visible');
+                }
+            });
+        }
+
+        function showNodeDetail(node) {
+            const panel = document.getElementById('node-detail');
+            const title = document.getElementById('detail-title');
+            const content = document.getElementById('detail-content');
+
+            title.textContent = `${node.type}: ${node.label}`;
+
+            let html = '';
+            if (node.type === 'Decision') {
+                if (node.status) html += `<p><span class="tag is-info">${node.status}</span></p>`;
+                if (node.rationale) html += `<p><span class="node-detail-label">Rationale:</span> ${node.rationale}</p>`;
+            } else if (node.type === 'Correction') {
+                if (node.severity) html += `<p><span class="tag is-danger">${node.severity}</span></p>`;
+                if (node.wrong_belief) html += `<p><span class="node-detail-label">Was:</span> ${node.wrong_belief}</p>`;
+            } else if (node.type === 'Exception') {
+                if (node.scope) html += `<p><span class="tag is-warning">${node.scope}</span></p>`;
+                if (node.rule_broken) html += `<p><span class="node-detail-label">Rule:</span> ${node.rule_broken}</p>`;
+            } else if (node.type === 'Insight') {
+                if (node.category) html += `<p><span class="tag is-success">${node.category}</span></p>`;
+            } else if (node.type === 'Question') {
+                if (node.answer) html += `<p><span class="node-detail-label">Answer:</span> ${node.answer}</p>`;
+            } else if (node.type === 'FailedApproach') {
+                if (node.outcome) html += `<p><span class="node-detail-label">Outcome:</span> ${node.outcome}</p>`;
+                if (node.lesson) html += `<p><span class="node-detail-label">Lesson:</span> ${node.lesson}</p>`;
+            } else if (node.type === 'ProjectFact') {
+                if (node.category) html += `<p><span class="tag is-link">${node.category}</span></p>`;
+            }
+
+            if (node.timestamp) {
+                html += `<p class="is-size-7 has-text-grey">${new Date(node.timestamp).toLocaleString()}</p>`;
+            }
+
+            const edges = cy.edges().filter(e =>
+                e.data('source') === node.id || e.data('target') === node.id
+            );
+            if (edges.length > 0) {
+                html += `<p class="mt-2"><span class="node-detail-label">Connections:</span> ${edges.length} edges</p>`;
+            }
+
+            content.innerHTML = html;
+            panel.classList.add('is-visible');
+        }
+
+        function updateGraph() {
+            updateLegend();
+            initGraph();
+        }
+
+        function updateLegend() {
+            const legend = document.getElementById('graph-legend');
+            const items = [
+                { id: 'show-decisions', css: 'decision', label: 'Decision' },
+                { id: 'show-corrections', css: 'correction', label: 'Correction' },
+                { id: 'show-exceptions', css: 'exception', label: 'Exception' },
+                { id: 'show-insights', css: 'insight', label: 'Insight' },
+                { id: 'show-questions', css: 'question', label: 'Question' },
+                { id: 'show-failed', css: 'failed', label: 'Failed' },
+                { id: 'show-facts', css: 'fact', label: 'Fact' }
+            ];
+            const selected = items.filter(i => document.getElementById(i.id).checked);
+            let html = selected
+                .map(i => `<span class="legend-item"><span class="legend-dot ${i.css}"></span>${i.label}</span>`)
+                .join('');
+            if (selected.length > 0) {
+                html += '<span class="legend-item"><span class="legend-dot session"></span>Session</span>';
+            }
+            legend.innerHTML = html;
+        }
+
+        function checkAllFilters() {
+            document.getElementById('show-decisions').checked = true;
+            document.getElementById('show-corrections').checked = true;
+            document.getElementById('show-exceptions').checked = true;
+            document.getElementById('show-insights').checked = true;
+            document.getElementById('show-questions').checked = true;
+            document.getElementById('show-failed').checked = true;
+            document.getElementById('show-facts').checked = true;
+            updateGraph();
+        }
+
+        function clearAllFilters() {
+            document.getElementById('show-decisions').checked = false;
+            document.getElementById('show-corrections').checked = false;
+            document.getElementById('show-exceptions').checked = false;
+            document.getElementById('show-insights').checked = false;
+            document.getElementById('show-questions').checked = false;
+            document.getElementById('show-failed').checked = false;
+            document.getElementById('show-facts').checked = false;
+            updateGraph();
+        }
+
+        async function loadProactiveInsights() {
+            const container = document.getElementById('insights-content');
+            try {
+                const response = await fetch(`/api/insights/proactive?project=${project}`);
+                const insights = await response.json();
+
+                if (insights.length === 0) {
+                    container.innerHTML = '<p class="has-text-grey is-size-7">No patterns detected yet.</p>';
+                    return;
+                }
+
+                const icons = {
+                    highly_cited: '🔗',
+                    exception_hotspot: '⚠️',
+                    correction_pattern: '🔄'
+                };
+
+                container.innerHTML = insights.map(i => `
+                    <div class="mb-2">
+                        <span>${icons[i.type] || '💡'}</span>
+                        <span class="is-size-7">${i.message}</span>
+                    </div>
+                `).join('');
+            } catch (error) {
+                console.error('Failed to load proactive insights:', error);
+                container.innerHTML = '<p class="has-text-grey is-size-7">Failed to load insights.</p>';
+            }
+        }
 
         async function loadMetrics() {
             try {
@@ -253,74 +514,6 @@
                 document.getElementById('reuse-rate').textContent = (data.decision_reuse_rate * 100).toFixed(1) + '%';
             } catch (error) {
                 console.error('Failed to load metrics:', error);
-            }
-        }
-
-        async function loadRecentContext() {
-            try {
-                const response = await fetch(`/api/recent?project=${project}&limit=15`);
-                const data = await response.json();
-
-                const container = document.getElementById('recent-context');
-                container.innerHTML = '';
-
-                if (data.length === 0) {
-                    container.innerHTML = '<p class="has-text-grey">No context captured yet. Start a Claude Code session to begin.</p>';
-                    return;
-                }
-
-                data.forEach(item => {
-                    const div = document.createElement('div');
-                    div.className = 'context-item box';
-
-                    const nodeData = item.data;
-                    let content = '';
-                    let cssClass = '';
-
-                    if (item.type === 'DECIDED') {
-                        cssClass = 'context-decision';
-                        content = `<strong>Decision:</strong> ${nodeData.description || 'No description'}`;
-                        if (nodeData.rationale) {
-                            content += `<br><small class="has-text-grey">Rationale: ${nodeData.rationale}</small>`;
-                        }
-                    } else if (item.type === 'CORRECTED') {
-                        cssClass = 'context-correction';
-                        content = `<strong>Correction:</strong> ${nodeData.right_belief || 'No belief recorded'}`;
-                        if (nodeData.wrong_belief) {
-                            content += `<br><small class="has-text-grey">Was: ${nodeData.wrong_belief}</small>`;
-                        }
-                    } else if (item.type === 'REALIZED') {
-                        cssClass = 'context-insight';
-                        content = `<strong>Insight:</strong> ${nodeData.summary || 'No summary'}`;
-                        if (nodeData.category) {
-                            content += `<br><span class="tag is-light">${nodeData.category}</span>`;
-                        }
-                    } else if (item.type === 'TRIED') {
-                        cssClass = 'context-failed';
-                        content = `<strong>Failed Approach:</strong> ${nodeData.approach || 'No approach recorded'}`;
-                        if (nodeData.lesson) {
-                            content += `<br><small class="has-text-grey">Lesson: ${nodeData.lesson}</small>`;
-                        }
-                    } else if (item.type === 'ASKED') {
-                        cssClass = 'context-question';
-                        content = `<strong>Q:</strong> ${nodeData.question || 'No question'}<br><strong>A:</strong> ${nodeData.answer || 'No answer'}`;
-                    } else if (item.type === 'EXCEPTED') {
-                        cssClass = 'context-decision';
-                        content = `<strong>Exception:</strong> ${nodeData.justification || 'No justification'}`;
-                        if (nodeData.rule_broken) {
-                            content += `<br><small class="has-text-grey">Rule: ${nodeData.rule_broken}</small>`;
-                        }
-                    } else {
-                        content = `<strong>${item.type}:</strong> ${JSON.stringify(nodeData).substring(0, 200)}`;
-                    }
-
-                    div.classList.add(cssClass);
-                    div.innerHTML = content;
-                    container.appendChild(div);
-                });
-            } catch (error) {
-                console.error('Failed to load recent context:', error);
-                document.getElementById('recent-context').innerHTML = '<p class="has-text-danger">Failed to load context</p>';
             }
         }
 
@@ -398,7 +591,9 @@
         });
 
         loadMetrics();
-        loadRecentContext();
+        updateLegend();
+        initGraph();
+        loadProactiveInsights();
 
         setInterval(loadMetrics, 30000);
 
