@@ -216,7 +216,9 @@ def graph():
             WITH nodes, collect(DISTINCT {{
                 source: n.id,
                 target: m.id,
-                type: type(r)
+                type: type(r),
+                similarity: r.similarity,
+                auto: r.auto
             }}) as rels
 
             // Also get session relationships
@@ -231,7 +233,9 @@ def graph():
             collect(DISTINCT {{
                 source: s.id,
                 target: n.id,
-                type: type(sr)
+                type: type(sr),
+                similarity: null,
+                auto: null
             }}) as session_rels
 
             RETURN [n in nodes | {{

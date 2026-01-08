@@ -139,10 +139,55 @@ class GraphClient:
         description: str,
         embedding: list,
         **kwargs,
-    ):
+    ) -> dict:
+        """Create a decision with deduplication.
+
+        Returns dict with 'action': 'created', 'skipped', or 'superseded'
+        """
         logger.debug(f"createDecision(id={decision_id[:12]}...)")
         start = time.time()
+
         with self.driver.session() as session:
+            # Get project from session first
+            proj_result = session.run(
+                "MATCH (s:Session {id: $session_id}) RETURN s.project as project",
+                session_id=session_id,
+            )
+            proj_record = proj_result.single()
+            if not proj_record:
+                logger.warning(f"Session {session_id} not found")
+                return {"action": "error", "reason": "session_not_found"}
+            project = proj_record["project"]
+
+            # Check for semantic duplicates
+            if embedding:
+                dup_result = session.run(
+                    """
+                    CALL db.index.vector.queryNodes('decision_embedding', 3, $embedding)
+                    YIELD node, score
+                    WHERE node.project = $project
+                    RETURN node.id as id, node.description as description, score
+                    ORDER BY score DESC
+                    LIMIT 1
+                    """,
+                    embedding=embedding,
+                    project=project,
+                )
+                dup_record = dup_result.single()
+
+                if dup_record and dup_record["score"] > 0.95:
+                    # Near-exact duplicate - skip creation
+                    duration = int((time.time() - start) * 1000)
+                    logger.info(
+                        f"Skipped duplicate Decision (score={dup_record['score']:.3f}) ({duration}ms)",
+                        extra={"cat": "tool"},
+                    )
+                    return {
+                        "action": "skipped",
+                        "existing_id": dup_record["id"],
+                        "similarity": dup_record["score"],
+                    }
+
             # Create the decision node
             result = session.run(
                 """
@@ -164,12 +209,12 @@ class GraphClient:
                 embedding=embedding,
                 props=kwargs,
             )
-            record = result.single()
-            project = record["project"] if record else None
+            result.single()
 
-            # Auto-link to similar prior decisions via CITES
-            if project and embedding:
-                session.run(
+            # Link to similar prior decisions: SUPERSEDES for high similarity, CITES for moderate
+            superseded_ids = []
+            if embedding:
+                link_result = session.run(
                     """
                     MATCH (d:Decision {id: $decision_id})
                     CALL db.index.vector.queryNodes('decision_embedding', 5, $embedding)
@@ -177,18 +222,41 @@ class GraphClient:
                     WHERE node.project = $project
                       AND node.id <> $decision_id
                       AND score > 0.8
-                    CREATE (d)-[:CITES {similarity: score, auto: true}]->(node)
+                    WITH d, node, score
+                    CALL {
+                        WITH d, node, score
+                        WITH d, node, score WHERE score > 0.85
+                        CREATE (d)-[:SUPERSEDES {similarity: score, auto: true}]->(node)
+                        RETURN 'superseded' as rel_type
+                        UNION ALL
+                        WITH d, node, score
+                        WITH d, node, score WHERE score <= 0.85 AND score > 0.8
+                        CREATE (d)-[:CITES {similarity: score, auto: true}]->(node)
+                        RETURN 'cited' as rel_type
+                    }
+                    RETURN node.id as linked_id, score, rel_type
                     """,
                     decision_id=decision_id,
                     embedding=embedding,
                     project=project,
                 )
+                for record in link_result:
+                    if record["rel_type"] == "superseded":
+                        superseded_ids.append(record["linked_id"])
 
         duration = int((time.time() - start) * 1000)
-        logger.info(
-            f"Created Decision id={decision_id[:12]}... ({duration}ms)",
-            extra={"cat": "tool"},
-        )
+        if superseded_ids:
+            logger.info(
+                f"Created Decision id={decision_id[:12]}... supersedes {len(superseded_ids)} prior ({duration}ms)",
+                extra={"cat": "tool"},
+            )
+            return {"action": "superseded", "superseded_ids": superseded_ids}
+        else:
+            logger.info(
+                f"Created Decision id={decision_id[:12]}... ({duration}ms)",
+                extra={"cat": "tool"},
+            )
+            return {"action": "created"}
 
     def createCorrection(
         self,

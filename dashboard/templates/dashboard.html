@@ -372,6 +372,11 @@
                 showNodeDetail(node);
             });
 
+            cy.on('tap', 'edge', function(evt) {
+                const edge = evt.target.data();
+                showEdgeDetail(edge);
+            });
+
             cy.on('tap', function(evt) {
                 if (evt.target === cy) {
                     document.getElementById('node-detail').classList.remove('is-visible');
@@ -416,6 +421,30 @@
             );
             if (edges.length > 0) {
                 html += `<p class="mt-2"><span class="node-detail-label">Connections:</span> ${edges.length} edges</p>`;
+            }
+
+            content.innerHTML = html;
+            panel.classList.add('is-visible');
+        }
+
+        function showEdgeDetail(edge) {
+            const panel = document.getElementById('node-detail');
+            const title = document.getElementById('detail-title');
+            const content = document.getElementById('detail-content');
+
+            title.textContent = `Edge: ${edge.type}`;
+
+            const sourceNode = cy.getElementById(edge.source).data();
+            const targetNode = cy.getElementById(edge.target).data();
+
+            let html = `<p><span class="node-detail-label">From:</span> ${sourceNode?.type || 'Unknown'}: ${sourceNode?.label || edge.source}</p>`;
+            html += `<p><span class="node-detail-label">To:</span> ${targetNode?.type || 'Unknown'}: ${targetNode?.label || edge.target}</p>`;
+
+            if (edge.similarity) {
+                html += `<p><span class="node-detail-label">Similarity:</span> ${(edge.similarity * 100).toFixed(1)}%</p>`;
+            }
+            if (edge.auto !== undefined) {
+                html += `<p><span class="tag is-light">${edge.auto ? 'Auto-generated' : 'Manual'}</span></p>`;
             }
 
             content.innerHTML = html;
