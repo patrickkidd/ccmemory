@@ -113,10 +113,14 @@ At session start, context is injected in this format:
 | Correction | id, project, timestamp, wrong_belief, right_belief, severity, topics, embedding | By project + timestamp |
 | Exception | id, project, timestamp, rule_broken, justification, scope, topics, embedding | By project + timestamp |
 | Insight | id, project, timestamp, summary, category, detail, topics, embedding | By project + timestamp |
-| Question | id, project, timestamp, question, answer, context, topics | By project + timestamp |
+| Question | id, project, timestamp, question, answer, context, topics, embedding | By project + timestamp |
 | FailedApproach | id, project, timestamp, approach, outcome, lesson, topics, embedding | By project + timestamp |
 | ProjectFact | id, project, timestamp, fact, category, context, topics, embedding | By project + timestamp |
 | Reference | id, project, timestamp, uri, type, description | By project + timestamp |
+
+**Note:** All node types with embeddings support semantic deduplication. If a new item
+has >0.9 cosine similarity to an existing item in the same project, it is skipped.
+This makes backfill operations idempotent.
 
 ### Cross-Reference Relationships
 
@@ -148,7 +152,10 @@ At session start, context is injected in this format:
 - **Unique constraints**: All node types have unique `id` constraint
 - **Property indexes**: project, timestamp, project+timestamp composite, status, category
 - **Full-text indexes**: Searchable text fields (description, rationale, etc.)
-- **Vector indexes**: 768-dimension embeddings for semantic search (Ollama nomic-embed-text)
+- **Vector indexes** (768-dim, cosine similarity, Ollama nomic-embed-text):
+  - `decision_embedding`, `correction_embedding`, `insight_embedding`
+  - `exception_embedding`, `failedapproach_embedding`, `question_embedding`
+  - `projectfact_embedding`, `chunk_embedding`
 
 ## MCP Tools
 
@@ -201,9 +208,10 @@ Tools:
 
 ### Backfill Tools (`tools/backfill.py`)
 
-- `ccmemory_list_conversations` — List importable JSONL files
-- `ccmemory_backfill_conversation` — Import a conversation
-- `ccmemory_backfill_markdown` — Import markdown file
+- `ccmemory_list_conversations` — List importable JSONL files for current project
+- `ccmemory_backfill_conversation` — Import a single conversation from JSONL content
+- `ccmemory_backfill_markdown` — Import a single markdown file
+- `ccmemory_backfill_project` — Import ALL markdown files AND conversation history from a project path (idempotent)
 
 ## Detection
 
