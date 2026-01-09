@@ -2,6 +2,24 @@
 
 Context graph for persistent memory across Claude Code sessions.
 
+## Core Strategy (Required Reading)
+
+**Before making design decisions**, consult these in order:
+
+1. **`doc/clarifications/`** — Binding decisions that override other docs
+2. **`doc/PROJECT_VISION.md`** — Intended behavior and architecture
+3. **Gupta/Koratana Articles** — External strategy ccmemory implements (local copies in `doc/context_graphs/`):
+   - [AI's Trillion-Dollar Opportunity](https://foundationcapital.com/context-graphs-ais-trillion-dollar-opportunity/) — Decision traces, not state; the "why" as first-class data
+   - [How to Build a Context Graph](https://www.linkedin.com/pulse/how-build-context-graph-animesh-koratana-6abve) — Two clocks, agent trajectories, schema as output
+
+**Key principles from these sources:**
+- **Event clock, not state clock** — Capture reasoning/decisions, not just current state
+- **Decision traces, not containers** — Organize by time + entity links, not sessions
+- **Schema as output** — Let structure emerge from use, don't over-specify upfront
+- **World models, not retrieval** — Goal is simulation ("what if?"), not just search
+
+The vision doc synthesizes these articles with Patrick's thinking. If vision doc conflicts with the articles, flag for review.
+
 ## Development Process
 
 - After changes, provide concise verification steps for the user
@@ -12,7 +30,7 @@ Context graph for persistent memory across Claude Code sessions.
 - Dashboard debug target: port 8765
 - Only rebuild/redeploy docker images when debugging container-specific issues
 - Use `uv` for all Python commands (e.g., `uv run pytest`, `uv pip install`)
-- **AS_BUILT.md**: Read `doc/AS_BUILT.md` before making changes. Update it after any non-obvious implementation change (schema, session flow, error handling, hooks, etc.)
+- **AS_BUILT.md**: Read `doc/AS_BUILT.md` before making changes. **ALWAYS update it after completing implementation work** — this is mandatory, not optional
 
 ## Session Startup Requirement
 
@@ -101,7 +119,8 @@ Container-internal (set in docker-compose.yml):
 2. Domain 2 (Markdown + Neo4j index): Reference knowledge — cached URLs, PDFs
 
 **Node Types (Domain 1):**
-- Session, Decision, Correction, Exception, Insight, Question, FailedApproach, ProjectFact, Reference
+- Decision, Correction, Exception, Insight, Question, FailedApproach, ProjectFact, Reference
+- **Note:** Session is deprecated per `doc/clarifications/1-DAG-with-CROSS-REFS.md` — organize by timestamp, not session containers
 
 **Detection Flow:**
 1. Stop hook fires after each Claude response

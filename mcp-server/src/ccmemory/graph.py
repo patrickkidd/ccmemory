@@ -1,3 +1,11 @@
+"""Neo4j graph client for ccmemory.
+
+Per doc/clarifications/1-DAG-with-CROSS-REFS.md:
+- No Session nodes as organizing principle
+- All nodes have timestamp + project directly
+- Cross-references via SUPERSEDES, CITES, etc.
+"""
+
 import os
 import uuid
 import json
@@ -21,9 +29,9 @@ class GraphClient:
         self.driver = GraphDatabase.driver(uri, auth=(user, password))
         self.user_id = os.getenv("CCMEMORY_USER_ID")
         if init_schema:
-            self.init_schema()
+            self.initSchema()
 
-    def init_schema(self):
+    def initSchema(self):
         """Initialize Neo4j schema from init.cypher."""
         cypher_paths = [
             Path("/app/init.cypher"),
@@ -44,67 +52,7 @@ class GraphClient:
     def close(self):
         self.driver.close()
 
-    # === Session Management ===
-
-    def createSession(
-        self,
-        session_id: str,
-        project: str,
-        started_at: str,
-        branch: Optional[str] = None,
-    ):
-        logger.debug(f"createSession(project={project}, id={session_id[:12]}...)")
-        start = time.time()
-        with self.driver.session() as session:
-            session.run(
-                """
-                MERGE (s:Session {id: $id})
-                SET s.project = $project,
-                    s.started_at = datetime($started_at),
-                    s.user_id = $user_id,
-                    s.branch = $branch
-                """,
-                id=session_id,
-                project=project,
-                started_at=started_at,
-                user_id=self.user_id,
-                branch=branch,
-            )
-        duration = int((time.time() - start) * 1000)
-        logger.info(f"Created Session id={session_id[:12]}... ({duration}ms)")
-
-    def endSession(self, session_id: str, transcript: str, summary: str):
-        with self.driver.session() as session:
-            session.run(
-                """
-                MATCH (s:Session {id: $id})
-                SET s.ended_at = datetime(),
-                    s.transcript = $transcript,
-                    s.summary = $summary
-                """,
-                id=session_id,
-                transcript=transcript,
-                summary=summary,
-            )
-
-    def sessionExists(self, session_id: str) -> bool:
-        with self.driver.session() as session:
-            result = session.run(
-                "MATCH (s:Session {id: $id}) RETURN count(s) > 0 as exists",
-                id=session_id,
-            )
-            return result.single()["exists"]
-
-    def filterExistingSessions(self, session_ids: list[str]) -> set[str]:
-        """Return set of session_ids that already exist in the database."""
-        if not session_ids:
-            return set()
-        with self.driver.session() as session:
-            result = session.run(
-                "UNWIND $ids AS id MATCH (s:Session {id: id}) RETURN s.id as id",
-                ids=session_ids,
-            )
-            return {r["id"] for r in result}
+    # === Existence Checks ===
 
     def decisionExists(self, project: str, description: str) -> bool:
         with self.driver.session() as session:
@@ -130,35 +78,70 @@ class GraphClient:
             )
             return result.single()["exists"]
 
+    def projectFactExists(
+        self, project: str, embedding: list, threshold: float = 0.9
+    ) -> bool:
+        """Check if a semantically similar fact already exists."""
+        with self.driver.session() as session:
+            result = session.run(
+                """
+                CALL db.index.vector.queryNodes('projectfact_embedding', 50, $embedding)
+                YIELD node, score
+                WHERE node.project = $project AND score >= $threshold
+                RETURN node, score
+                LIMIT 1
+                """,
+                embedding=embedding,
+                project=project,
+                threshold=threshold,
+            )
+            return result.single() is not None
+
+    def _isDuplicate(
+        self, index_name: str, project: str, embedding: list, threshold: float = 0.9
+    ) -> dict | None:
+        """Check if semantically similar node exists. Returns match info or None."""
+        if not embedding:
+            return None
+        with self.driver.session() as session:
+            result = session.run(
+                f"""
+                CALL db.index.vector.queryNodes('{index_name}', 3, $embedding)
+                YIELD node, score
+                WHERE node.project = $project AND score >= $threshold
+                RETURN node.id as id, score
+                ORDER BY score DESC
+                LIMIT 1
+                """,
+                embedding=embedding,
+                project=project,
+                threshold=threshold,
+            )
+            record = result.single()
+            if record:
+                return {"id": record["id"], "score": record["score"]}
+            return None
+
     # === Domain 1: Record Functions ===
+    # All methods take project directly (no session dependency)
 
     def createDecision(
         self,
         decision_id: str,
-        session_id: str,
+        project: str,
         description: str,
         embedding: list,
+        topics: list[str] | None = None,
         **kwargs,
     ) -> dict:
-        """Create a decision with deduplication.
+        """Create a decision with deduplication and auto-linking.
 
         Returns dict with 'action': 'created', 'skipped', or 'superseded'
         """
-        logger.debug(f"createDecision(id={decision_id[:12]}...)")
+        logger.debug(f"createDecision(id={decision_id[:12]}..., project={project})")
         start = time.time()
 
         with self.driver.session() as session:
-            # Get project from session first
-            proj_result = session.run(
-                "MATCH (s:Session {id: $session_id}) RETURN s.project as project",
-                session_id=session_id,
-            )
-            proj_record = proj_result.single()
-            if not proj_record:
-                logger.warning(f"Session {session_id} not found")
-                return {"action": "error", "reason": "session_not_found"}
-            project = proj_record["project"]
-
             # Check for semantic duplicates
             if embedding:
                 dup_result = session.run(
@@ -176,7 +159,6 @@ class GraphClient:
                 dup_record = dup_result.single()
 
                 if dup_record and dup_record["score"] > 0.95:
-                    # Near-exact duplicate - skip creation
                     duration = int((time.time() - start) * 1000)
                     logger.info(
                         f"Skipped duplicate Decision (score={dup_record['score']:.3f}) ({duration}ms)",
@@ -188,30 +170,29 @@ class GraphClient:
                         "similarity": dup_record["score"],
                     }
 
-            # Create the decision node
-            result = session.run(
+            # Create the decision node directly (no session)
+            session.run(
                 """
-                MATCH (s:Session {id: $session_id})
                 CREATE (d:Decision {id: $decision_id})
                 SET d.description = $description,
                     d.timestamp = datetime(),
-                    d.project = s.project,
-                    d.user_id = s.user_id,
+                    d.project = $project,
+                    d.user_id = $user_id,
                     d.status = 'developmental',
-                    d.embedding = $embedding
+                    d.embedding = $embedding,
+                    d.topics = $topics
                 SET d += $props
-                CREATE (s)-[:DECIDED]->(d)
-                RETURN s.project as project
                 """,
-                session_id=session_id,
                 decision_id=decision_id,
                 description=description,
+                project=project,
+                user_id=self.user_id,
                 embedding=embedding,
+                topics=topics or [],
                 props=kwargs,
             )
-            result.single()
 
-            # Link to similar prior decisions: SUPERSEDES for high similarity, CITES for moderate
+            # Link to similar prior decisions
             superseded_ids = []
             if embedding:
                 link_result = session.run(
@@ -261,33 +242,45 @@ class GraphClient:
     def createCorrection(
         self,
         correction_id: str,
-        session_id: str,
+        project: str,
         wrong_belief: str,
         right_belief: str,
         embedding: list,
+        topics: list[str] | None = None,
         **kwargs,
-    ):
-        logger.debug(f"createCorrection(id={correction_id[:12]}...)")
+    ) -> dict:
+        logger.debug(f"createCorrection(id={correction_id[:12]}..., project={project})")
         start = time.time()
+
+        dup = self._isDuplicate("correction_embedding", project, embedding, 0.9)
+        if dup:
+            duration = int((time.time() - start) * 1000)
+            logger.info(
+                f"Skipped duplicate Correction (score={dup['score']:.3f}) ({duration}ms)",
+                extra={"cat": "tool"},
+            )
+            return {"action": "skipped", "existing_id": dup["id"], "similarity": dup["score"]}
+
         with self.driver.session() as session:
             session.run(
                 """
-                MATCH (s:Session {id: $session_id})
                 CREATE (c:Correction {id: $correction_id})
                 SET c.wrong_belief = $wrong_belief,
                     c.right_belief = $right_belief,
                     c.timestamp = datetime(),
-                    c.project = s.project,
-                    c.user_id = s.user_id,
-                    c.embedding = $embedding
+                    c.project = $project,
+                    c.user_id = $user_id,
+                    c.embedding = $embedding,
+                    c.topics = $topics
                 SET c += $props
-                CREATE (s)-[:CORRECTED]->(c)
                 """,
-                session_id=session_id,
                 correction_id=correction_id,
                 wrong_belief=wrong_belief,
                 right_belief=right_belief,
+                project=project,
+                user_id=self.user_id,
                 embedding=embedding,
+                topics=topics or [],
                 props=kwargs,
             )
         duration = int((time.time() - start) * 1000)
@@ -295,37 +288,50 @@ class GraphClient:
             f"Created Correction id={correction_id[:12]}... ({duration}ms)",
             extra={"cat": "tool"},
         )
+        return {"action": "created"}
 
     def createException(
         self,
         exception_id: str,
-        session_id: str,
+        project: str,
         rule_broken: str,
         justification: str,
         embedding: list,
+        topics: list[str] | None = None,
         **kwargs,
-    ):
-        logger.debug(f"createException(id={exception_id[:12]}...)")
+    ) -> dict:
+        logger.debug(f"createException(id={exception_id[:12]}..., project={project})")
         start = time.time()
+
+        dup = self._isDuplicate("exception_embedding", project, embedding, 0.9)
+        if dup:
+            duration = int((time.time() - start) * 1000)
+            logger.info(
+                f"Skipped duplicate Exception (score={dup['score']:.3f}) ({duration}ms)",
+                extra={"cat": "tool"},
+            )
+            return {"action": "skipped", "existing_id": dup["id"], "similarity": dup["score"]}
+
         with self.driver.session() as session:
             session.run(
                 """
-                MATCH (s:Session {id: $session_id})
                 CREATE (e:Exception {id: $exception_id})
                 SET e.rule_broken = $rule_broken,
                     e.justification = $justification,
                     e.timestamp = datetime(),
-                    e.project = s.project,
-                    e.user_id = s.user_id,
-                    e.embedding = $embedding
+                    e.project = $project,
+                    e.user_id = $user_id,
+                    e.embedding = $embedding,
+                    e.topics = $topics
                 SET e += $props
-                CREATE (s)-[:EXCEPTED]->(e)
                 """,
-                session_id=session_id,
                 exception_id=exception_id,
                 rule_broken=rule_broken,
                 justification=justification,
+                project=project,
+                user_id=self.user_id,
                 embedding=embedding,
+                topics=topics or [],
                 props=kwargs,
             )
         duration = int((time.time() - start) * 1000)
@@ -333,37 +339,50 @@ class GraphClient:
             f"Created Exception id={exception_id[:12]}... ({duration}ms)",
             extra={"cat": "tool"},
         )
+        return {"action": "created"}
 
     def createInsight(
         self,
         insight_id: str,
-        session_id: str,
+        project: str,
         category: str,
         summary: str,
         embedding: list,
+        topics: list[str] | None = None,
         **kwargs,
-    ):
-        logger.debug(f"createInsight(id={insight_id[:12]}...)")
+    ) -> dict:
+        logger.debug(f"createInsight(id={insight_id[:12]}..., project={project})")
         start = time.time()
+
+        dup = self._isDuplicate("insight_embedding", project, embedding, 0.9)
+        if dup:
+            duration = int((time.time() - start) * 1000)
+            logger.info(
+                f"Skipped duplicate Insight (score={dup['score']:.3f}) ({duration}ms)",
+                extra={"cat": "tool"},
+            )
+            return {"action": "skipped", "existing_id": dup["id"], "similarity": dup["score"]}
+
         with self.driver.session() as session:
             session.run(
                 """
-                MATCH (s:Session {id: $session_id})
                 CREATE (i:Insight {id: $insight_id})
                 SET i.category = $category,
                     i.summary = $summary,
                     i.timestamp = datetime(),
-                    i.project = s.project,
-                    i.user_id = s.user_id,
-                    i.embedding = $embedding
+                    i.project = $project,
+                    i.user_id = $user_id,
+                    i.embedding = $embedding,
+                    i.topics = $topics
                 SET i += $props
-                CREATE (s)-[:REALIZED]->(i)
                 """,
-                session_id=session_id,
                 insight_id=insight_id,
                 category=category,
                 summary=summary,
+                project=project,
+                user_id=self.user_id,
                 embedding=embedding,
+                topics=topics or [],
                 props=kwargs,
             )
         duration = int((time.time() - start) * 1000)
@@ -371,29 +390,51 @@ class GraphClient:
             f"Created Insight id={insight_id[:12]}... ({duration}ms)",
             extra={"cat": "tool"},
         )
+        return {"action": "created"}
 
     def createQuestion(
-        self, question_id: str, session_id: str, question: str, answer: str, **kwargs
-    ):
-        logger.debug(f"createQuestion(id={question_id[:12]}...)")
+        self,
+        question_id: str,
+        project: str,
+        question: str,
+        answer: str,
+        embedding: list | None = None,
+        topics: list[str] | None = None,
+        **kwargs,
+    ) -> dict:
+        logger.debug(f"createQuestion(id={question_id[:12]}..., project={project})")
         start = time.time()
+
+        if embedding:
+            dup = self._isDuplicate("question_embedding", project, embedding, 0.9)
+            if dup:
+                duration = int((time.time() - start) * 1000)
+                logger.info(
+                    f"Skipped duplicate Question (score={dup['score']:.3f}) ({duration}ms)",
+                    extra={"cat": "tool"},
+                )
+                return {"action": "skipped", "existing_id": dup["id"], "similarity": dup["score"]}
+
         with self.driver.session() as session:
             session.run(
                 """
-                MATCH (s:Session {id: $session_id})
                 CREATE (q:Question {id: $question_id})
                 SET q.question = $question,
                     q.answer = $answer,
                     q.timestamp = datetime(),
-                    q.project = s.project,
-                    q.user_id = s.user_id
+                    q.project = $project,
+                    q.user_id = $user_id,
+                    q.embedding = $embedding,
+                    q.topics = $topics
                 SET q += $props
-                CREATE (s)-[:ASKED]->(q)
                 """,
-                session_id=session_id,
                 question_id=question_id,
                 question=question,
                 answer=answer,
+                project=project,
+                user_id=self.user_id,
+                embedding=embedding,
+                topics=topics or [],
                 props=kwargs,
             )
         duration = int((time.time() - start) * 1000)
@@ -401,37 +442,54 @@ class GraphClient:
             f"Created Question id={question_id[:12]}... ({duration}ms)",
             extra={"cat": "tool"},
         )
+        return {"action": "created"}
 
     def createFailedApproach(
         self,
         fa_id: str,
-        session_id: str,
+        project: str,
         approach: str,
         outcome: str,
         lesson: str,
+        embedding: list | None = None,
+        topics: list[str] | None = None,
         **kwargs,
-    ):
-        logger.debug(f"createFailedApproach(id={fa_id[:12]}...)")
+    ) -> dict:
+        logger.debug(f"createFailedApproach(id={fa_id[:12]}..., project={project})")
         start = time.time()
+
+        if embedding:
+            dup = self._isDuplicate("failedapproach_embedding", project, embedding, 0.9)
+            if dup:
+                duration = int((time.time() - start) * 1000)
+                logger.info(
+                    f"Skipped duplicate FailedApproach (score={dup['score']:.3f}) ({duration}ms)",
+                    extra={"cat": "tool"},
+                )
+                return {"action": "skipped", "existing_id": dup["id"], "similarity": dup["score"]}
+
         with self.driver.session() as session:
             session.run(
                 """
-                MATCH (s:Session {id: $session_id})
                 CREATE (f:FailedApproach {id: $fa_id})
                 SET f.approach = $approach,
                     f.outcome = $outcome,
                     f.lesson = $lesson,
                     f.timestamp = datetime(),
-                    f.project = s.project,
-                    f.user_id = s.user_id
+                    f.project = $project,
+                    f.user_id = $user_id,
+                    f.embedding = $embedding,
+                    f.topics = $topics
                 SET f += $props
-                CREATE (s)-[:TRIED]->(f)
                 """,
-                session_id=session_id,
                 fa_id=fa_id,
                 approach=approach,
                 outcome=outcome,
                 lesson=lesson,
+                project=project,
+                user_id=self.user_id,
+                embedding=embedding,
+                topics=topics or [],
                 props=kwargs,
             )
         duration = int((time.time() - start) * 1000)
@@ -439,29 +497,34 @@ class GraphClient:
             f"Created FailedApproach id={fa_id[:12]}... ({duration}ms)",
             extra={"cat": "tool"},
         )
+        return {"action": "created"}
 
     def createReference(
-        self, ref_id: str, session_id: str, ref_type: str, uri: str, **kwargs
+        self,
+        ref_id: str,
+        project: str,
+        ref_type: str,
+        uri: str,
+        **kwargs,
     ):
         logger.debug(f"createReference(id={ref_id[:12]}..., type={ref_type})")
         start = time.time()
         with self.driver.session() as session:
             session.run(
                 """
-                MATCH (s:Session {id: $session_id})
                 CREATE (r:Reference {id: $ref_id})
                 SET r.type = $ref_type,
                     r.uri = $uri,
                     r.timestamp = datetime(),
-                    r.project = s.project,
-                    r.user_id = s.user_id
+                    r.project = $project,
+                    r.user_id = $user_id
                 SET r += $props
-                CREATE (s)-[:REFERENCED]->(r)
                 """,
-                session_id=session_id,
                 ref_id=ref_id,
                 ref_type=ref_type,
                 uri=uri,
+                project=project,
+                user_id=self.user_id,
                 props=kwargs,
             )
         duration = int((time.time() - start) * 1000)
@@ -470,35 +533,105 @@ class GraphClient:
             extra={"cat": "tool"},
         )
 
+    def createDecisionRelationship(
+        self,
+        decision_id: str,
+        project: str,
+        target_description: str,
+        relationship_type: str,
+        reason: str,
+        embedding: list,
+    ) -> bool:
+        """Create explicit relationship from decision to a matching prior decision.
+
+        Finds the best matching prior decision by description similarity
+        and creates the specified relationship.
+
+        Returns True if relationship was created, False if no match found.
+        """
+        logger.debug(
+            f"createDecisionRelationship(from={decision_id[:12]}..., type={relationship_type})"
+        )
+        with self.driver.session() as session:
+            result = session.run(
+                """
+                CALL db.index.vector.queryNodes('decision_embedding', 5, $embedding)
+                YIELD node, score
+                WHERE node.project = $project
+                  AND node.id <> $decision_id
+                  AND score > 0.7
+                RETURN node.id as target_id, node.description as description, score
+                ORDER BY score DESC
+                LIMIT 1
+                """,
+                embedding=embedding,
+                project=project,
+                decision_id=decision_id,
+            )
+            record = result.single()
+
+            if not record:
+                logger.debug(
+                    f"No matching decision found for relationship to: {target_description[:50]}..."
+                )
+                return False
+
+            rel_type = relationship_type.upper().replace(" ", "_")
+            if rel_type not in (
+                "SUPERSEDES",
+                "DEPENDS_ON",
+                "CONSTRAINS",
+                "CONFLICTS_WITH",
+                "IMPACTS",
+            ):
+                logger.warning(f"Unknown relationship type: {rel_type}, using IMPACTS")
+                rel_type = "IMPACTS"
+
+            session.run(
+                f"""
+                MATCH (d:Decision {{id: $decision_id}})
+                MATCH (target:Decision {{id: $target_id}})
+                CREATE (d)-[:{rel_type} {{reason: $reason, auto: false, similarity: $score}}]->(target)
+                """,
+                decision_id=decision_id,
+                target_id=record["target_id"],
+                reason=reason,
+                score=record["score"],
+            )
+            logger.info(
+                f"Created {rel_type} relationship from {decision_id[:12]} to {record['target_id'][:12]}",
+                extra={"cat": "tool"},
+            )
+            return True
+
     def createProjectFact(
         self,
         fact_id: str,
-        session_id: str,
+        project: str,
         category: str,
         fact: str,
         embedding: list,
         **kwargs,
     ):
-        logger.debug(f"createProjectFact(id={fact_id[:12]}...)")
+        logger.debug(f"createProjectFact(id={fact_id[:12]}..., project={project})")
         start = time.time()
         with self.driver.session() as session:
             session.run(
                 """
-                MATCH (s:Session {id: $session_id})
                 CREATE (pf:ProjectFact {id: $fact_id})
                 SET pf.category = $category,
                     pf.fact = $fact,
                     pf.timestamp = datetime(),
-                    pf.project = s.project,
-                    pf.user_id = s.user_id,
+                    pf.project = $project,
+                    pf.user_id = $user_id,
                     pf.embedding = $embedding
                 SET pf += $props
-                CREATE (s)-[:STATED]->(pf)
                 """,
-                session_id=session_id,
                 fact_id=fact_id,
                 category=category,
                 fact=fact,
+                project=project,
+                user_id=self.user_id,
                 embedding=embedding,
                 props=kwargs,
             )
@@ -508,29 +641,10 @@ class GraphClient:
             extra={"cat": "tool"},
         )
 
-    def projectFactExists(
-        self, project: str, embedding: list, threshold: float = 0.9
-    ) -> bool:
-        """Check if a semantically similar fact already exists."""
-        with self.driver.session() as session:
-            result = session.run(
-                """
-                CALL db.index.vector.queryNodes('projectfact_embedding', 50, $embedding)
-                YIELD node, score
-                WHERE node.project = $project AND score >= $threshold
-                RETURN node, score
-                LIMIT 1
-                """,
-                embedding=embedding,
-                project=project,
-                threshold=threshold,
-            )
-            return result.single() is not None
-
     # === Domain 1: Query Functions ===
 
     def queryRecent(self, project: str, limit: int = 20, include_team: bool = True):
-        """Get recent context for a project."""
+        """Get recent context for a project (all node types by timestamp)."""
         logger.debug(f"queryRecent(project={project}, limit={limit})")
         start = time.time()
         with self.driver.session() as session:
@@ -539,11 +653,26 @@ class GraphClient:
             else:
                 visibility = "n.user_id = $user_id" if self.user_id else "true"
 
+            # Query all Domain 1 node types directly by project + timestamp
             result = session.run(
                 f"""
-                MATCH (s:Session {{project: $project}})-[r]->(n)
-                WHERE {visibility}
-                RETURN n, type(r) as rel_type, s.started_at as session_time
+                CALL {{
+                    MATCH (n:Decision {{project: $project}}) WHERE {visibility}
+                    RETURN n, 'Decision' as node_type
+                    UNION ALL
+                    MATCH (n:Correction {{project: $project}}) WHERE {visibility}
+                    RETURN n, 'Correction' as node_type
+                    UNION ALL
+                    MATCH (n:Insight {{project: $project}}) WHERE {visibility}
+                    RETURN n, 'Insight' as node_type
+                    UNION ALL
+                    MATCH (n:Exception {{project: $project}}) WHERE {visibility}
+                    RETURN n, 'Exception' as node_type
+                    UNION ALL
+                    MATCH (n:FailedApproach {{project: $project}}) WHERE {visibility}
+                    RETURN n, 'FailedApproach' as node_type
+                }}
+                RETURN n, node_type
                 ORDER BY n.timestamp DESC
                 LIMIT $limit
                 """,
@@ -551,7 +680,10 @@ class GraphClient:
                 user_id=self.user_id,
                 limit=limit,
             )
-            records = [dict(record) for record in result]
+            records = [
+                {"n": dict(record["n"]), "node_type": record["node_type"]}
+                for record in result
+            ]
         duration = int((time.time() - start) * 1000)
         logger.debug(f"queryRecent returned {len(records)} items ({duration}ms)")
         return records
@@ -559,7 +691,7 @@ class GraphClient:
     def searchPrecedent(
         self, query: str, project: str, limit: int = 10, include_team: bool = True
     ):
-        """Full-text search across all node types with team visibility filtering."""
+        """Full-text search across all node types."""
         with self.driver.session() as session:
             results = {}
             indexes = [
@@ -569,6 +701,7 @@ class GraphClient:
                 ("question_search", "questions"),
                 ("failedapproach_search", "failed_approaches"),
                 ("projectfact_search", "project_facts"),
+                ("exception_search", "exceptions"),
             ]
 
             if include_team and self.user_id:
@@ -597,7 +730,7 @@ class GraphClient:
     def searchSemantic(
         self, embedding: list, project: str, limit: int = 10, include_team: bool = True
     ):
-        """Vector similarity search across Domain 1 with team visibility filtering."""
+        """Vector similarity search across Domain 1."""
         with self.driver.session() as session:
             results = {}
             indexes = [
@@ -605,6 +738,8 @@ class GraphClient:
                 ("correction_embedding", "corrections"),
                 ("insight_embedding", "insights"),
                 ("projectfact_embedding", "project_facts"),
+                ("exception_embedding", "exceptions"),
+                ("failedapproach_embedding", "failed_approaches"),
             ]
 
             if include_team and self.user_id:
@@ -628,8 +763,25 @@ class GraphClient:
                 results[key] = [(dict(r["node"]), r["score"]) for r in result]
             return results
 
+    def queryByTopic(self, project: str, topic: str, limit: int = 20):
+        """Get decisions/items by topic."""
+        with self.driver.session() as session:
+            result = session.run(
+                """
+                MATCH (d:Decision {project: $project})
+                WHERE $topic IN d.topics
+                RETURN d
+                ORDER BY d.timestamp DESC
+                LIMIT $limit
+                """,
+                project=project,
+                topic=topic,
+                limit=limit,
+            )
+            return [dict(record["d"]) for record in result]
+
     def queryStaleDecisions(self, project: str, days: int = 30):
-        """Find developmental decisions that may need review or promotion."""
+        """Find developmental decisions that may need review."""
         with self.driver.session() as session:
             result = session.run(
                 """
@@ -678,6 +830,74 @@ class GraphClient:
         duration = int((time.time() - start) * 1000)
         logger.debug(f"queryProjectFacts returned {len(records)} items ({duration}ms)")
         return records
+
+    def queryOpenQuestions(self, project: str, limit: int = 10):
+        """Get unanswered questions."""
+        with self.driver.session() as session:
+            result = session.run(
+                """
+                MATCH (q:Question {project: $project})
+                WHERE q.answer IS NULL OR q.answer = ''
+                RETURN q
+                ORDER BY q.timestamp DESC
+                LIMIT $limit
+                """,
+                project=project,
+                limit=limit,
+            )
+            return [dict(record["q"]) for record in result]
+
+    # === Pattern Detection (for dashboard) ===
+
+    def queryExceptionClusters(self, project: str) -> list[dict]:
+        """Find rules with multiple exceptions."""
+        with self.driver.session() as session:
+            result = session.run(
+                """
+                MATCH (e:Exception {project: $project})
+                WITH e.rule_broken as rule, count(e) as count, collect(e.justification) as justifications
+                WHERE count >= 2
+                RETURN rule, count, justifications
+                ORDER BY count DESC
+                """,
+                project=project,
+            )
+            return [dict(record) for record in result]
+
+    def querySupersessionChains(self, project: str) -> list[dict]:
+        """Find decisions that evolved through multiple iterations."""
+        with self.driver.session() as session:
+            result = session.run(
+                """
+                MATCH path = (newest:Decision {project: $project})-[:SUPERSEDES*2..]->(oldest:Decision)
+                WHERE NOT EXISTS { (x:Decision)-[:SUPERSEDES]->(newest) }
+                WITH newest, oldest, length(path) as chain_length,
+                     [n IN nodes(path) | n.description] as descriptions
+                RETURN newest.id as newest_id, newest.description as newest_desc,
+                       oldest.description as oldest_desc, chain_length, descriptions
+                ORDER BY chain_length DESC
+                LIMIT 10
+                """,
+                project=project,
+            )
+            return [dict(record) for record in result]
+
+    def queryCorrectionHotspots(self, project: str) -> list[dict]:
+        """Find topics with high correction counts."""
+        with self.driver.session() as session:
+            result = session.run(
+                """
+                MATCH (c:Correction {project: $project})
+                WHERE c.topics IS NOT NULL AND size(c.topics) > 0
+                UNWIND c.topics as topic
+                WITH topic, count(c) as count, collect(c.right_belief)[0..3] as samples
+                WHERE count >= 2
+                RETURN topic, count, samples
+                ORDER BY count DESC
+                """,
+                project=project,
+            )
+            return [dict(record) for record in result]
 
     # === Domain 2: Chunk Index ===
 
@@ -783,18 +1003,16 @@ class GraphClient:
 
     def recordRetrieval(
         self,
-        session_id: str,
         project: str,
         retrieved_ids: list[str],
         context_summary: str,
     ):
-        """Record what context was retrieved during session start."""
+        """Record what context was retrieved."""
         with self.driver.session() as session:
             session.run(
                 """
                 CREATE (r:Retrieval {
                     id: $id,
-                    session_id: $session_id,
                     project: $project,
                     user_id: $user_id,
                     timestamp: datetime(),
@@ -804,7 +1022,6 @@ class GraphClient:
                 })
                 """,
                 id=f"retrieval-{uuid.uuid4().hex[:12]}",
-                session_id=session_id,
                 project=project,
                 user_id=self.user_id,
                 retrieved_ids=retrieved_ids,
@@ -831,41 +1048,12 @@ class GraphClient:
         """Calculate cognitive coefficient from observable metrics."""
         curated = self._countNodes("Decision", project, status="curated")
         reuse_rate = self.calculateDecisionReuseRate(project)
-        reexplanation = self.calculateReexplanationRate(project)
-        correction_improvement = max(0.0, min(1.0, 1.0 - reexplanation))
 
-        coefficient = (
-            1.0 + (curated * 0.02) + (correction_improvement * 0.5) + (reuse_rate * 1.0)
-        )
+        coefficient = 1.0 + (curated * 0.02) + (reuse_rate * 1.0)
         return min(4.0, coefficient)
 
-    def calculateReexplanationRate(self, project: str) -> float:
-        """Calculate re-explanation rate (corrections as proxy)."""
-        with self.driver.session() as session:
-            result = session.run(
-                """
-                MATCH (c:Correction {project: $project})
-                RETURN count(c) as corrections
-                """,
-                project=project,
-            )
-            corrections = result.single()["corrections"]
-
-            result = session.run(
-                """
-                MATCH (s:Session {project: $project})
-                RETURN count(s) as sessions
-                """,
-                project=project,
-            )
-            sessions = result.single()["sessions"]
-
-            if sessions == 0:
-                return 0.0
-            return corrections / sessions
-
     def calculateDecisionReuseRate(self, project: str) -> float:
-        """Calculate decision reuse rate."""
+        """Calculate decision reuse rate (decisions with precedent links)."""
         with self.driver.session() as session:
             result = session.run(
                 """
@@ -900,15 +1088,15 @@ class GraphClient:
         """Get all metrics for dashboard."""
         return {
             "cognitive_coefficient": self.calculateCoefficient(project),
-            "reexplanation_rate": self.calculateReexplanationRate(project),
             "decision_reuse_rate": self.calculateDecisionReuseRate(project),
             "graph_density": self.calculateGraphDensity(project),
             "total_decisions": self._countNodes("Decision", project),
             "total_corrections": self._countNodes("Correction", project),
-            "total_sessions": self._countNodes("Session", project),
             "total_insights": self._countNodes("Insight", project),
+            "total_exceptions": self._countNodes("Exception", project),
             "total_failed_approaches": self._countNodes("FailedApproach", project),
             "total_project_facts": self._countNodes("ProjectFact", project),
+            "total_questions": self._countNodes("Question", project),
         }
 
     def _countNodes(self, label: str, project: str, status: str = None) -> int:

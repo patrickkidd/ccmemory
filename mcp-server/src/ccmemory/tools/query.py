@@ -155,17 +155,19 @@ def registerQueryTools(mcp: FastMCP):
             result = session.run(
                 """
                 MATCH (d:Decision {id: $decision_id})
-                OPTIONAL MATCH (s:Session)-[:DECIDED]->(d)
                 OPTIONAL MATCH (d)-[:CITES]->(cited:Decision)
                 OPTIONAL MATCH (d)-[:SUPERSEDES]->(superseded:Decision)
                 OPTIONAL MATCH (superseding:Decision)-[:SUPERSEDES]->(d)
-                OPTIONAL MATCH (s)-[:CORRECTED]->(c:Correction)
-                OPTIONAL MATCH (s)-[:EXCEPTED]->(e:Exception)
-                RETURN d, s, collect(DISTINCT cited) as cited,
+                OPTIONAL MATCH (d)-[:DEPENDS_ON]->(depends:Decision)
+                OPTIONAL MATCH (d)-[:CONSTRAINS]->(constrains:Decision)
+                OPTIONAL MATCH (d)-[:CONFLICTS_WITH]->(conflicts:Decision)
+                RETURN d,
+                       collect(DISTINCT cited) as cited,
                        collect(DISTINCT superseded) as superseded,
                        collect(DISTINCT superseding) as superseding,
-                       collect(DISTINCT c) as corrections,
-                       collect(DISTINCT e) as exceptions
+                       collect(DISTINCT depends) as depends_on,
+                       collect(DISTINCT constrains) as constrains,
+                       collect(DISTINCT conflicts) as conflicts_with
                 """,
                 decision_id=decision_id,
             )
@@ -176,12 +178,12 @@ def registerQueryTools(mcp: FastMCP):
 
             return {
                 "decision": dict(record["d"]) if record["d"] else None,
-                "session": dict(record["s"]) if record["s"] else None,
                 "cites": [dict(n) for n in record["cited"] if n],
                 "supersedes": [dict(n) for n in record["superseded"] if n],
                 "superseded_by": [dict(n) for n in record["superseding"] if n],
-                "session_corrections": [dict(n) for n in record["corrections"] if n],
-                "session_exceptions": [dict(n) for n in record["exceptions"] if n],
+                "depends_on": [dict(n) for n in record["depends_on"] if n],
+                "constrains": [dict(n) for n in record["constrains"] if n],
+                "conflicts_with": [dict(n) for n in record["conflicts_with"] if n],
             }
 
     @mcp.tool()
@@ -233,3 +235,33 @@ def registerQueryTools(mcp: FastMCP):
         client = getClient()
         project = _getProject()
         return client.getAllMetrics(project)
+
+    @mcp.tool()
+    @logTool
+    async def queryOpenQuestions(limit: int = 10) -> dict:
+        """Get unanswered questions from the context graph.
+
+        Args:
+            limit: Maximum results
+        """
+        client = getClient()
+        project = _getProject()
+        results = client.queryOpenQuestions(project, limit=limit)
+        return {"project": project, "open_questions": results}
+
+    @mcp.tool()
+    @logTool
+    async def queryPatterns() -> dict:
+        """Get detected patterns from the context graph.
+
+        Returns exception clusters, supersession chains, and correction hotspots.
+        """
+        client = getClient()
+        project = _getProject()
+
+        return {
+            "project": project,
+            "exception_clusters": client.queryExceptionClusters(project),
+            "supersession_chains": client.querySupersessionChains(project),
+            "correction_hotspots": client.queryCorrectionHotspots(project),
+        }

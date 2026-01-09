@@ -9,6 +9,7 @@ import zipfile
 
 if os.getenv("GEVENT_SUPPORT") == "True":
     from gevent import monkey
+
     monkey.patch_all()
 
 from flask import Flask, render_template, jsonify, request
@@ -70,7 +71,6 @@ _DETAIL_PAGE_CONFIG = {
     "decisions": {"title": "Decisions"},
     "corrections": {"title": "Corrections"},
     "insights": {"title": "Insights"},
-    "sessions": {"title": "Sessions"},
     "failed-approaches": {"title": "Failed Approaches"},
     "exceptions": {"title": "Exceptions"},
     "questions": {"title": "Questions"},
@@ -81,6 +81,7 @@ _DETAIL_PAGE_CONFIG = {
 
 def _detail_page(page_type: str):
     """Create detail page handler for a given page type."""
+
     def view():
         project = request.args.get("project", "")
         config = _DETAIL_PAGE_CONFIG.get(page_type, {})
@@ -90,6 +91,7 @@ def _detail_page(page_type: str):
             page_type=page_type,
             title=config.get("title", page_type.title()),
         )
+
     view.__name__ = f"{page_type}_view"
     return view
 
@@ -114,26 +116,34 @@ def metrics():
             WITH total_decisions, curated, count(c) as total_corrections
             OPTIONAL MATCH (i:Insight {project: $project})
             WITH total_decisions, curated, total_corrections, count(i) as total_insights
-            OPTIONAL MATCH (s:Session {project: $project})
-            WITH total_decisions, curated, total_corrections, total_insights, count(s) as total_sessions
             OPTIONAL MATCH (f:FailedApproach {project: $project})
-            WITH total_decisions, curated, total_corrections, total_insights, total_sessions, count(f) as total_failed_approaches
+            WITH total_decisions, curated, total_corrections, total_insights, count(f) as total_failed_approaches
             OPTIONAL MATCH (pf:ProjectFact {project: $project})
+            WITH total_decisions, curated, total_corrections, total_insights, total_failed_approaches, count(pf) as total_project_facts
+            OPTIONAL MATCH (e:Exception {project: $project})
+            WITH total_decisions, curated, total_corrections, total_insights, total_failed_approaches, total_project_facts, count(e) as total_exceptions
+            OPTIONAL MATCH (:Decision {project: $project})-[sup:SUPERSEDES]->(:Decision)
             RETURN total_decisions, curated, total_corrections, total_insights,
-                   total_sessions, total_failed_approaches, count(pf) as total_project_facts
+                   total_failed_approaches, total_project_facts, total_exceptions, count(sup) as supersession_count
             """,
             project=project,
         )
         record = result.single()
 
         total_decisions = record["total_decisions"]
-        total_sessions = record["total_sessions"]
         total_corrections = record["total_corrections"]
+        total_project_facts = record["total_project_facts"]
+        total_exceptions = record["total_exceptions"]
+        supersession_count = record["supersession_count"]
 
         reuse_rate = record["curated"] / total_decisions if total_decisions > 0 else 0
-        reexplanation_rate = (
-            total_corrections / total_sessions if total_sessions > 0 else 0
+        evolution_rate = (
+            supersession_count / total_decisions if total_decisions > 0 else 0
         )
+        exception_rate = (
+            total_exceptions / total_project_facts if total_project_facts > 0 else 0
+        )
+
         coefficient = 1.0 + (total_decisions * 0.02) + (reuse_rate * 1.0)
         coefficient = min(coefficient, 4.0)
 
@@ -143,12 +153,12 @@ def metrics():
                 "total_decisions": total_decisions,
                 "total_corrections": total_corrections,
                 "total_insights": record["total_insights"],
-                "total_sessions": total_sessions,
                 "total_failed_approaches": record["total_failed_approaches"],
-                "total_project_facts": record["total_project_facts"],
+                "total_project_facts": total_project_facts,
+                "total_exceptions": total_exceptions,
                 "decision_reuse_rate": reuse_rate,
-                "graph_density": 0.0,
-                "reexplanation_rate": reexplanation_rate,
+                "decision_evolution_rate": evolution_rate,
+                "rule_exception_rate": exception_rate,
             }
         )
 
@@ -194,8 +204,13 @@ def graph():
     project = request.args.get("project", "")
     limit = int(request.args.get("limit", 100))
     node_types = request.args.getlist("types") or [
-        "Decision", "Correction", "Exception", "Insight",
-        "Question", "FailedApproach", "ProjectFact"
+        "Decision",
+        "Correction",
+        "Exception",
+        "Insight",
+        "Question",
+        "FailedApproach",
+        "ProjectFact",
     ]
     driver = getDriver()
 
@@ -271,13 +286,8 @@ def graph():
         if not record:
             return jsonify({"nodes": [], "edges": []})
 
-        nodes = record["nodes"] + [
-            sn for sn in record["session_nodes"] if sn["id"]
-        ]
-        edges = [
-            e for e in record["edges"]
-            if e["source"] and e["target"]
-        ]
+        nodes = record["nodes"] + [sn for sn in record["session_nodes"] if sn["id"]]
+        edges = [e for e in record["edges"] if e["source"] and e["target"]]
 
         for node in nodes:
             if node.get("timestamp") and hasattr(node["timestamp"], "isoformat"):
@@ -304,11 +314,13 @@ def proactive_insights():
             project=project,
         )
         for r in result:
-            insights.append({
-                "type": "highly_cited",
-                "message": f"'{r['description'][:40]}...' cited by {r['cite_count']} decisions",
-                "node_id": r["id"],
-            })
+            insights.append(
+                {
+                    "type": "highly_cited",
+                    "message": f"'{r['description'][:40]}...' cited by {r['cite_count']} decisions",
+                    "node_id": r["id"],
+                }
+            )
 
         result = session.run(
             """
@@ -321,10 +333,12 @@ def proactive_insights():
             project=project,
         )
         for r in result:
-            insights.append({
-                "type": "exception_hotspot",
-                "message": f"'{r['rule'][:30]}...' has {r['exception_count']} exceptions",
-            })
+            insights.append(
+                {
+                    "type": "exception_hotspot",
+                    "message": f"'{r['rule'][:30]}...' has {r['exception_count']} exceptions",
+                }
+            )
 
         result = session.run(
             """
@@ -335,12 +349,98 @@ def proactive_insights():
         )
         record = result.single()
         if record and record["correction_count"] >= 3:
-            insights.append({
-                "type": "correction_pattern",
-                "message": f"{record['correction_count']} corrections recorded - review for patterns",
-            })
+            insights.append(
+                {
+                    "type": "correction_pattern",
+                    "message": f"{record['correction_count']} corrections recorded - review for patterns",
+                }
+            )
 
     return jsonify(insights)
+
+
+@app.route("/api/patterns")
+def patterns():
+    """Get detected patterns: exception clusters, supersession chains, correction hotspots."""
+    project = request.args.get("project", "")
+    driver = getDriver()
+
+    result = {
+        "exception_clusters": [],
+        "supersession_chains": [],
+        "correction_hotspots": [],
+    }
+
+    with driver.session() as session:
+        # Exception clusters: rules with multiple exceptions
+        clusters = session.run(
+            """
+            MATCH (e:Exception {project: $project})
+            WHERE e.rule_broken IS NOT NULL
+            WITH e.rule_broken as rule, collect(e) as exceptions, count(*) as count
+            WHERE count >= 2
+            RETURN rule, count,
+                   [exc IN exceptions | {id: exc.id, justification: exc.justification, scope: exc.scope}] as exceptions
+            ORDER BY count DESC
+            LIMIT 10
+            """,
+            project=project,
+        )
+        for r in clusters:
+            result["exception_clusters"].append(
+                {
+                    "rule": r["rule"],
+                    "count": r["count"],
+                    "exceptions": r["exceptions"],
+                }
+            )
+
+        # Supersession chains: decisions that supersede other decisions
+        chains = session.run(
+            """
+            MATCH path = (d:Decision {project: $project})-[:SUPERSEDES*2..]->(old:Decision)
+            WITH d, length(path) as chain_length, [n IN nodes(path) | n.description] as chain
+            RETURN d.id as id, d.description as description, chain_length, chain
+            ORDER BY chain_length DESC
+            LIMIT 10
+            """,
+            project=project,
+        )
+        for r in chains:
+            result["supersession_chains"].append(
+                {
+                    "id": r["id"],
+                    "description": r["description"],
+                    "chain_length": r["chain_length"],
+                    "chain": r["chain"],
+                }
+            )
+
+        # Correction hotspots: topics with multiple corrections
+        hotspots = session.run(
+            """
+            MATCH (c:Correction {project: $project})
+            WHERE c.topics IS NOT NULL AND size(c.topics) > 0
+            UNWIND c.topics as topic
+            WITH topic, collect(c) as corrections, count(*) as count
+            WHERE count >= 2
+            RETURN topic, count,
+                   [corr IN corrections[0..5] | {id: corr.id, wrong: corr.wrong_belief, right: corr.right_belief}] as corrections
+            ORDER BY count DESC
+            LIMIT 10
+            """,
+            project=project,
+        )
+        for r in hotspots:
+            result["correction_hotspots"].append(
+                {
+                    "topic": r["topic"],
+                    "count": r["count"],
+                    "corrections": r["corrections"],
+                }
+            )
+
+    return jsonify(result)
 
 
 @app.route("/api/decisions")
@@ -437,24 +537,6 @@ def failed_approaches():
             limit=limit,
         )
         return jsonify([serialize_node(dict(r["f"])) for r in result])
-
-
-@app.route("/api/sessions")
-def sessions():
-    project = request.args.get("project", "")
-    limit = int(request.args.get("limit", 50))
-    driver = getDriver()
-
-    with driver.session() as session:
-        result = session.run(
-            """
-            MATCH (s:Session {project: $project})
-            RETURN s ORDER BY s.started_at DESC LIMIT $limit
-            """,
-            project=project,
-            limit=limit,
-        )
-        return jsonify([serialize_node(dict(r["s"])) for r in result])
 
 
 @app.route("/api/exceptions")
@@ -658,6 +740,7 @@ def import_conversations():
         return jsonify({"error": f"MCP connection failed: {e}"}), 500
     except Exception as e:
         import traceback
+
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 

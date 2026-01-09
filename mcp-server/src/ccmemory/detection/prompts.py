@@ -83,6 +83,22 @@ EXTRACTION RULES
    - FailedApproach: approach, outcome (what failed and result)
    - ProjectFact: fact, category (the convention and its type)
 
+5. **TOPICS**: Each item should include a `topics` list identifying which
+   components/areas it relates to. Examples: ["auth", "api"], ["database"],
+   ["ui", "forms"], ["testing"]. Use short, lowercase tags. Empty list if
+   no specific topic applies.
+
+6. **DECISION RELATIONSHIPS**: For decisions, identify relationships to prior
+   decisions when the conversation references them:
+   - SUPERSEDES: This decision replaces/updates a prior decision
+   - DEPENDS_ON: This decision requires a prior decision to hold
+   - CONSTRAINS: This decision limits options for another area
+   - CONFLICTS_WITH: This decision contradicts a prior decision
+   - IMPACTS: This decision affects another area
+
+   Include as `relatedDecisions` with description of the prior decision,
+   relationship type, and reason. Only include if explicitly referenced.
+
 ═══════════════════════════════════════════════════════════════════════════════
 EXAMPLES
 ═══════════════════════════════════════════════════════════════════════════════
@@ -117,7 +133,8 @@ User: "Let's go with Redis. It's simpler for our use case and we don't need pers
   "decisions": [{{
     "confidence": 0.9,
     "description": "Use Redis for caching instead of PostgreSQL",
-    "rationale": "Simpler, persistence not needed"
+    "rationale": "Simpler, persistence not needed",
+    "topics": ["caching", "infrastructure"]
   }}],
   "corrections": [], "exceptions": [], "insights": [], "questions": [], "failedApproaches": [], "projectFacts": []
 }}
@@ -154,7 +171,8 @@ User: "No, users are defined in auth/accounts.py, not models/user.py. We don't h
     "confidence": 0.95,
     "wrongBelief": "User model is in models/user.py",
     "rightBelief": "User model is in auth/accounts.py, no models directory exists",
-    "severity": "significant"
+    "severity": "significant",
+    "topics": ["auth", "models"]
   }}],
   "decisions": [], "exceptions": [], "insights": [], "questions": [], "failedApproaches": [], "projectFacts": []
 }}
@@ -190,7 +208,8 @@ User: "Skip tests for now — this is just a quick prototype we're throwing away
     "confidence": 0.85,
     "ruleBroken": "Add unit tests for new functions",
     "justification": "Quick prototype being discarded next week",
-    "scope": "one-time"
+    "scope": "one-time",
+    "topics": ["testing"]
   }}],
   "decisions": [], "corrections": [], "insights": [], "questions": [], "failedApproaches": [], "projectFacts": []
 }}
@@ -209,7 +228,8 @@ User: "We use JWT tokens with RS256 signing. Tokens expire after 1 hour and refr
     "confidence": 0.9,
     "question": "What authentication method does the API use?",
     "answer": "JWT tokens with RS256 signing, 1hr expiry, 30-day refresh tokens",
-    "context": "API authentication"
+    "context": "API authentication",
+    "topics": ["auth", "api"]
   }}],
   "decisions": [], "corrections": [], "exceptions": [], "insights": [], "failedApproaches": [], "projectFacts": []
 }}
@@ -243,7 +263,8 @@ User: "That regex approach didn't work — it times out on large files. We need 
     "confidence": 0.9,
     "approach": "Regex parsing",
     "outcome": "Times out on large files",
-    "lesson": "Use streaming for large file handling"
+    "lesson": "Use streaming for large file handling",
+    "topics": ["parsing", "performance"]
   }}],
   "decisions": [], "corrections": [], "exceptions": [], "insights": [], "questions": [], "projectFacts": []
 }}
@@ -262,7 +283,8 @@ User: "Oh interesting — they correlate with when marketing sends their email b
     "confidence": 0.85,
     "category": "analysis",
     "summary": "Nightly errors correlate with marketing email blasts causing DB load spikes",
-    "implications": "May need to schedule batch jobs to avoid email blast times"
+    "implications": "May need to schedule batch jobs to avoid email blast times",
+    "topics": ["database", "batch-jobs", "performance"]
   }}],
   "decisions": [], "corrections": [], "exceptions": [], "questions": [], "failedApproaches": [], "projectFacts": []
 }}
@@ -281,18 +303,21 @@ User: "Actually we use GraphQL here, not REST. And let's put it under /graphql n
     "confidence": 0.95,
     "wrongBelief": "Project uses REST API pattern",
     "rightBelief": "Project uses GraphQL",
-    "severity": "significant"
+    "severity": "significant",
+    "topics": ["api"]
   }}],
   "decisions": [{{
     "confidence": 0.85,
     "description": "Use /graphql endpoint path",
-    "rationale": "Project convention"
+    "rationale": "Project convention",
+    "topics": ["api", "routing"]
   }}],
   "exceptions": [{{
     "confidence": 0.8,
     "ruleBroken": "Authentication middleware required",
     "justification": "Internal-only endpoint",
-    "scope": "conditional"
+    "scope": "conditional",
+    "topics": ["auth", "api"]
   }}],
   "insights": [], "questions": [], "failedApproaches": [], "projectFacts": []
 }}
@@ -310,13 +335,15 @@ User: "We use pytest here, not unittest."
   "projectFacts": [{{
     "confidence": 0.9,
     "category": "tool",
-    "fact": "Uses pytest for testing"
+    "fact": "Uses pytest for testing",
+    "topics": ["testing"]
   }}],
   "corrections": [{{
     "confidence": 0.85,
     "wrongBelief": "Project uses unittest",
     "rightBelief": "Project uses pytest",
-    "severity": "minor"
+    "severity": "minor",
+    "topics": ["testing"]
   }}],
   "decisions": [], "exceptions": [], "insights": [], "questions": [], "failedApproaches": []
 }}
