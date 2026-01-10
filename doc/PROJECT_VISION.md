@@ -10,7 +10,7 @@ And when it gives you advice, it's generic — it doesn't know what you've alrea
 
 ## The Solution
 
-**ccmemory gives AI assistants persistent memory.** They remember your projects, your decisions, your preferences, and what's been tried before.
+**ccmemory gives AI assistants long-term persistent memory.** They remember your projects, your decisions, your preferences, and what's been tried before. But more importantly, they remember *why* you made the decisions and preferences, what's been tried before.
 
 **Three things change:**
 
