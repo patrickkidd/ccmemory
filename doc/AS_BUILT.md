@@ -31,22 +31,38 @@ Current state of the implementation as of January 2025.
           └────────────────────────────────────┘
 ```
 
-## Session Context Flow
+## Core Design Principles
 
-### In-Memory Session State
+Per `doc/clarifications/1-DAG-with-CROSS-REFS.md`:
 
-Session context is stored in module-level globals in `context.py`:
+1. **No Session Nodes** — Organize by timestamp + project directly. Sessions are ephemeral
+   CC↔MCP connections, not meaningful for the knowledge graph.
+
+2. **Parallel Decision Traces** — Topics enable multiple independent decision threads
+   within a project (e.g., auth work vs UI work).
+
+3. **Rich Cross-References** — Relationships: SUPERSEDES, DEPENDS_ON, CONSTRAINS,
+   CONFLICTS_WITH, IMPACTS, CITES.
+
+4. **Project Facts as Binding Instructions** — Injected at session start as
+   "Project Rules" that replace CLAUDE.md custom instructions.
+
+5. **Open Questions On-Demand** — Not auto-injected to avoid steering Claude.
+
+## Project Context Flow
+
+### In-Memory Project State
+
+Project context is stored in module-level globals in `context.py`:
 
 ```python
 _current_project: str | None = None
-_current_session_id: str | None = None
 ```
 
 Functions:
-- `setCurrentSession(project, session_id)` — Called by session_start hook
-- `clearCurrentSession()` — Called by session_end hook
+- `setCurrentProject(project)` — Called by session_start hook
+- `clearCurrentProject()` — Called by session_end hook
 - `getCurrentProject()` — Returns current project or None
-- `getCurrentSessionId()` — Returns current session ID or None
 
 **Important**: This state is lost if the MCP server restarts mid-session.
 
@@ -54,30 +70,68 @@ Functions:
 
 1. **SessionStart hook** fires → `hooks/session_start.sh` → MCP `ccmemory_session_start`
 2. `handleSessionStart()` in `hooks.py`:
-   - Creates Session node in Neo4j
-   - Sets in-memory context via `setCurrentSession()`
-   - Queries and returns: project facts, recent context, stale decisions, failed approaches
+   - Sets in-memory context via `setCurrentProject()`
+   - Queries and returns: project facts (as "Project Rules"), recent context, stale decisions, failed approaches
    - Records a `Retrieval` node with IDs of all retrieved items
 3. **Stop hook** fires after each Claude response → `message_response.sh` → `ccmemory_message_response`
-4. `handleMessageResponse()` runs LLM detection for decisions, corrections, project facts
+4. `handleMessageResponse()` runs LLM detection for decisions, corrections, project facts with topics
 5. **SessionEnd hook** fires → `session_end.sh` → `ccmemory_session_end`
-6. `handleSessionEnd()` clears in-memory context, stores session summary
+6. `handleSessionEnd()` clears in-memory context, records telemetry
+
+## Context Injection Format
+
+At session start, context is injected in this format:
+
+```markdown
+## Project Rules (from context graph — treat as custom instructions)
+
+### Conventions
+- [project fact 1]
+- [project fact 2]
+
+### Constraints
+- [project fact 3]
+
+## Recent Decisions
+- [topic: auth] Use JWT tokens for API auth
+- CORRECTION: [topic: db] PostgreSQL, not MySQL
+
+## Things That Didn't Work (Don't Repeat)
+- **Regex parsing**: Times out on large files
+
+## Decisions Needing Review
+- [stale decision descriptions]
+```
 
 ## Neo4j Schema
 
 ### Node Types (Domain 1 — Your Specifics)
 
-| Node | Key Fields | Relationships |
-|------|------------|---------------|
-| Session | id, project, user_id, started_at, ended_at, summary | Source of all others |
-| Decision | id, description, rationale, status, embedding | Session→DECIDED→Decision |
-| Correction | id, wrong_belief, right_belief, severity, embedding | Session→CORRECTED→Correction |
-| Exception | id, rule_broken, justification, scope, embedding | Session→EXCEPTED→Exception |
-| Insight | id, summary, category, detail, embedding | Session→REALIZED→Insight |
-| Question | id, question, answer, context | Session→ASKED→Question |
-| FailedApproach | id, approach, outcome, lesson | Session→TRIED→FailedApproach |
-| ProjectFact | id, fact, category, context, embedding | Session→STATED→ProjectFact |
-| Reference | id, uri, type, description | Session→REFERENCED→Reference |
+| Node | Key Fields | Organization |
+|------|------------|--------------|
+| Decision | id, project, timestamp, description, rationale, status, topics, embedding | By project + timestamp |
+| Correction | id, project, timestamp, wrong_belief, right_belief, severity, topics, embedding | By project + timestamp |
+| Exception | id, project, timestamp, rule_broken, justification, scope, topics, embedding | By project + timestamp |
+| Insight | id, project, timestamp, summary, category, detail, topics, embedding | By project + timestamp |
+| Question | id, project, timestamp, question, answer, context, topics, embedding | By project + timestamp |
+| FailedApproach | id, project, timestamp, approach, outcome, lesson, topics, embedding | By project + timestamp |
+| ProjectFact | id, project, timestamp, fact, category, context, topics, embedding | By project + timestamp |
+| Reference | id, project, timestamp, uri, type, description | By project + timestamp |
+
+**Note:** All node types with embeddings support semantic deduplication. If a new item
+has >0.9 cosine similarity to an existing item in the same project, it is skipped.
+This makes backfill operations idempotent.
+
+### Cross-Reference Relationships
+
+| Relationship | Meaning |
+|--------------|---------|
+| SUPERSEDES | New decision replaces/updates a prior one (auto: similarity >0.85) |
+| CITES | New decision references a prior one (auto: similarity 0.8-0.85) |
+| DEPENDS_ON | Decision requires another to hold |
+| CONSTRAINS | Decision limits options in another area |
+| CONFLICTS_WITH | Decision contradicts another |
+| IMPACTS | Decision affects another area |
 
 ### Node Types (Domain 2 — Reference Knowledge)
 
@@ -85,33 +139,34 @@ Functions:
 |------|------------|---------|
 | Chunk | id, content, source_file, section, embedding | Indexed markdown chunks |
 | Concept | id, name, definition, domain | (Roadmap) Extracted concepts |
-| Hypothesis | id, statement, testable_prediction, status | (Roadmap) |
-| KnowledgeGap | id | (Roadmap) |
 
 ### Telemetry & Observability
 
 | Node | Key Fields | Purpose |
 |------|------------|---------|
 | TelemetryEvent | id, event_type, project, timestamp, data | Usage analytics |
-| Retrieval | id, session_id, project, retrieved_ids, retrieved_count, context_summary | Tracks what context was surfaced |
+| Retrieval | id, project, timestamp, retrieved_ids, retrieved_count, context_summary | Tracks what context was surfaced |
 
 ### Indexes
 
 - **Unique constraints**: All node types have unique `id` constraint
-- **Property indexes**: timestamp, project, status, category fields
+- **Property indexes**: project, timestamp, project+timestamp composite, status, category
 - **Full-text indexes**: Searchable text fields (description, rationale, etc.)
-- **Vector indexes**: 384-dimension embeddings for semantic search (cosine similarity)
+- **Vector indexes** (768-dim, cosine similarity, Ollama nomic-embed-text):
+  - `decision_embedding`, `correction_embedding`, `insight_embedding`
+  - `exception_embedding`, `failedapproach_embedding`, `question_embedding`
+  - `projectfact_embedding`, `chunk_embedding`
 
 ## MCP Tools
 
 ### Recording Tools (`tools/record.py`)
 
-All record tools check for active session. If no session exists, return structured error:
+All record tools check for active project context. If no project exists, return structured error:
 
 ```python
 {
-    "error": "session_not_found",
-    "message": "MCP server session context was lost...",
+    "error": "project_not_found",
+    "message": "No project context available...",
     "ask_user": True,
     "ask_user_options": [
         {"label": "Retry (re-establish session)", "action": "retry"},
@@ -122,23 +177,25 @@ All record tools check for active session. If no session exists, return structur
 ```
 
 Tools:
-- `recordDecision` — description, rationale, options_considered, revisit_trigger, sets_precedent
-- `recordCorrection` — wrong_belief, right_belief, severity
-- `recordException` — rule_broken, justification, scope
-- `recordInsight` — summary, category, detail, implications
-- `recordQuestion` — question, answer, context
-- `recordFailedApproach` — approach, outcome, lesson
+- `recordDecision` — description, rationale, options_considered, revisit_trigger, sets_precedent, topics
+- `recordCorrection` — wrong_belief, right_belief, severity, topics
+- `recordException` — rule_broken, justification, scope, topics
+- `recordInsight` — summary, category, detail, implications, topics
+- `recordQuestion` — question, answer, context, topics
+- `recordFailedApproach` — approach, outcome, lesson, topics
 - `recordReference` — uri, ref_type, description, context
 
 ### Query Tools (`tools/query.py`)
 
 - `queryContext` — Recent context for project
 - `searchPrecedent` — Full-text search
-- `searchSemantic` — Vector similarity search
+- `searchSemantic` — Vector similarity search with reranking
 - `queryByTopic` — Topic-filtered search
-- `traceDecision` — Full decision history
+- `traceDecision` — Full decision history with relationships
 - `queryStaleDecisions` — Decisions needing review
 - `queryFailedApproaches` — Failed approaches to avoid
+- `queryOpenQuestions` — Unanswered questions (on-demand, not auto-injected)
+- `queryPatterns` — Exception clusters, supersession chains, correction hotspots
 - `getMetrics` — Cognitive coefficient and stats
 
 ### Reference Tools (`tools/reference.py`)
@@ -151,31 +208,48 @@ Tools:
 
 ### Backfill Tools (`tools/backfill.py`)
 
-- `ccmemory_list_conversations` — List importable JSONL files
-- `ccmemory_backfill_conversation` — Import a conversation
-- `ccmemory_backfill_markdown` — Import markdown file
+- `ccmemory_list_conversations` — List importable JSONL files for current project
+- `ccmemory_backfill_conversation` — Import a single conversation from JSONL content
+- `ccmemory_backfill_markdown` — Import a single markdown file
+- `ccmemory_backfill_project` — Import ALL markdown files AND conversation history from a project path (idempotent)
 
-## Hooks
+## Detection
 
-### Configuration (`hooks/hooks.json`)
+### Detection Types
 
-| Event | Script | Timeout | Purpose |
-|-------|--------|---------|---------|
-| SessionStart | ensure-running.sh | 90s | Start Docker containers if needed |
-| SessionStart | session_start.sh | 10s | Initialize session, inject context |
-| UserPromptSubmit | prompt_submit.sh | 5s | Log user prompts |
-| Stop | message_response.sh | 15s | Run LLM detection |
-| SessionEnd | session_end.sh | 10s | Summarize and close session |
+Detected from conversation exchanges via LLM analysis:
 
-### Hook Scripts
+| Type | Fields | When Detected |
+|------|--------|---------------|
+| Decision | description, rationale, revisitTrigger, topics, relatedDecisions | User makes explicit choice |
+| Correction | wrongBelief, rightBelief, severity, topics | User corrects Claude |
+| Exception | ruleBroken, justification, scope, topics | User grants one-time exception |
+| Insight | summary, category, implications, topics | Non-obvious realization |
+| Question | question, answer, context, topics | Substantive Q&A |
+| FailedApproach | approach, outcome, lesson, topics | Something tried and failed |
+| ProjectFact | fact, category, context, topics | Project convention stated |
 
-All hooks call `curl` to MCP server endpoints:
+### Relationship Detection
 
-```bash
-curl -s -X POST "http://localhost:8766/ccmemory_session_start" \
-  -H "Content-Type: application/json" \
-  -d '{"project": "...", "session_id": "..."}'
+For decisions, the detection prompt requests related decisions:
+
+```python
+relatedDecisions: [
+    {"description": "prior decision text", "relationshipType": "SUPERSEDES", "reason": "..."}
+]
 ```
+
+These are matched by embedding similarity and stored as explicit edges.
+
+## Pattern Detection
+
+Dashboard and query tools expose detected patterns:
+
+1. **Exception Clusters** — Rules with 2+ exceptions (maybe rule should change)
+2. **Supersession Chains** — Decisions that evolved through 3+ iterations
+3. **Correction Hotspots** — Topics with frequent corrections (knowledge gap)
+
+API endpoint: `/api/patterns`
 
 ## Dashboard
 
@@ -189,7 +263,6 @@ Flask app at `dashboard/app.py`, runs on port 8765.
 | `/decisions` | detailpage.html | Decision list |
 | `/corrections` | detailpage.html | Correction list |
 | `/insights` | detailpage.html | Insight list |
-| `/sessions` | detailpage.html | Session list |
 | `/failed-approaches` | detailpage.html | Failed approaches |
 | `/exceptions` | detailpage.html | Exceptions |
 | `/questions` | detailpage.html | Q&A list |
@@ -203,70 +276,25 @@ All endpoints accept `?project=<name>&limit=<n>`:
 - `/api/decisions`
 - `/api/corrections`
 - `/api/insights`
-- `/api/sessions`
 - `/api/failed-approaches`
 - `/api/exceptions`
 - `/api/questions`
 - `/api/project-facts`
 - `/api/retrievals`
 - `/api/metrics`
+- `/api/patterns`
 - `/api/projects`
 - `/api/recent-context`
+- `/api/graph`
 
-### Template Architecture
+### Metrics
 
-- `dashboard.html` — Main page with metric cards, recent context, activity log
-- `detailpage.html` — Generic table page driven by `columnConfig` and `filterOptions` JS objects
-
-Both templates share navbar structure with project selector dropdown.
-
-## SKILL.md Instructions
-
-Located at `skills/ccmemory/SKILL.md`. Key sections:
-
-1. **Available Tools** — Lists all MCP tools
-2. **Behaviors** — When to record decisions, corrections, etc.
-3. **Session Startup** — Check for pending imports, use AskUserQuestion
-4. **Proactive Context Use** — Check precedents before giving advice
-5. **Team Mode** — Developmental vs curated visibility
-6. **Error Handling: Session Lost** — Use AskUserQuestion when `error: session_not_found`
-
-## Error Handling
-
-### Session Lost Error
-
-When MCP server restarts, in-memory session context is lost. Tools return:
-
-```json
-{
-  "error": "session_not_found",
-  "ask_user": true,
-  "instructions": "Use AskUserQuestion..."
-}
-```
-
-SKILL.md instructs Claude to use AskUserQuestion with options:
-- Retry (re-establishes session on next interaction)
-- Continue without saving
-
-### Detection Failures
-
-LLM detection in `handleMessageResponse()` is wrapped in try/catch. Failures are logged but don't interrupt the session.
-
-## Retrieval Logging
-
-Every session start records what context was retrieved:
-
-```python
-client.recordRetrieval(
-    session_id=session_id,
-    project=project,
-    retrieved_ids=[...],  # IDs of all retrieved nodes
-    context_summary=context_text,  # Full injected text (truncated to 2000 chars)
-)
-```
-
-Viewable at `/retrievals` in dashboard.
+| Metric | Calculation |
+|--------|-------------|
+| Cognitive Coefficient | 1.0 + (decisions * 0.02) + reuse_rate |
+| Decision Reuse Rate | curated / total decisions |
+| Decision Evolution Rate | supersession_count / total decisions |
+| Rule Exception Rate | total exceptions / total project facts |
 
 ## File Locations
 
@@ -279,10 +307,13 @@ ccmemory/
 │   ├── src/ccmemory/
 │   │   ├── server.py            # MCP entry (stdio/HTTP)
 │   │   ├── graph.py             # Neo4j client singleton
-│   │   ├── context.py           # In-memory session state
+│   │   ├── context.py           # In-memory project state
 │   │   ├── hooks.py             # Hook handlers
 │   │   ├── embeddings.py        # Ollama embeddings
-│   │   ├── detection/           # LLM detection
+│   │   ├── detection/
+│   │   │   ├── detector.py      # Detection orchestration
+│   │   │   ├── prompts.py       # LLM prompts
+│   │   │   └── schemas.py       # Pydantic models
 │   │   └── tools/
 │   │       ├── record.py        # Record tools
 │   │       ├── query.py         # Query tools
@@ -304,6 +335,8 @@ ccmemory/
 ├── skills/ccmemory/SKILL.md     # Agent instructions
 └── doc/
     ├── AS_BUILT.md              # This file
+    ├── clarifications/
+    │   └── 1-DAG-with-CROSS-REFS.md  # Core design decisions
     ├── DEVELOPMENT.md
     ├── NEO4J_COOKBOOK.md
     └── ...

@@ -31,7 +31,6 @@
                 <a class="navbar-item" href="/decisions?project={{ project }}">Decisions</a>
                 <a class="navbar-item" href="/corrections?project={{ project }}">Corrections</a>
                 <a class="navbar-item" href="/insights?project={{ project }}">Insights</a>
-                <a class="navbar-item" href="/sessions?project={{ project }}">Sessions</a>
                 <div class="navbar-item has-dropdown is-hoverable">
                     <a class="navbar-link">More</a>
                     <div class="navbar-dropdown">
@@ -102,12 +101,6 @@
                 {key: 'category', label: 'Category', sortable: true},
                 {key: 'detail', label: 'Detail', sortable: false, truncate: true},
                 {key: 'timestamp', label: 'Date', sortable: true, format: 'date'}
-            ],
-            sessions: [
-                {key: 'started_at', label: 'Started', sortable: true, format: 'date'},
-                {key: 'project', label: 'Project', sortable: true},
-                {key: 'summary', label: 'Summary', sortable: false, truncate: true},
-                {key: 'branch', label: 'Branch', sortable: true}
             ],
             'failed-approaches': [
                 {key: 'approach', label: 'Approach', sortable: false, truncate: true},

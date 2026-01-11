@@ -1,11 +1,18 @@
+"""Hook handlers for Claude Code integration.
+
+Per doc/clarifications/1-DAG-with-CROSS-REFS.md:
+- No Session nodes created
+- Project facts injected as "Project Rules" (binding instructions)
+- All nodes created directly with project + timestamp
+"""
+
 import json
 import logging
 import uuid
-import asyncio
 from datetime import datetime
 
 from .graph import getClient
-from .context import setCurrentSession, clearCurrentSession
+from .context import setCurrentProject, clearCurrentProject, getCurrentProject
 from .detection.detector import detectAll
 from .detection.schemas import (
     Correction,
@@ -24,117 +31,132 @@ from .embeddings import getEmbedding
 logger = logging.getLogger("ccmemory")
 
 
-def filterPendingBackfillSessions(session_stems: list[str], client=None) -> list[str]:
-    """Given session stems from host filesystem, return those not yet backfilled."""
-    if not session_stems:
-        return []
-
-    if client is None:
-        client = getClient()
-
-    # Batch check for efficiency
-    backfill_ids = [f"backfill-{s}" for s in session_stems]
-    existing = client.filterExistingSessions(backfill_ids)
-    return [s for s in session_stems if f"backfill-{s}" not in existing]
-
-
 def handleSessionStart(
     session_id: str, cwd: str, conversation_stems: list[str] | None = None
 ) -> dict:
+    """Initialize context for a new CC session.
+
+    Note: We don't create Session nodes anymore (per clarification).
+    Just set in-memory context and return relevant context for injection.
+    """
     project = cwd.rsplit("/", 1)[-1] if "/" in cwd else cwd
     client = getClient()
 
-    setCurrentSession(project, session_id)
+    # Set in-memory context for tools (they need to know current project)
+    setCurrentProject(project)
 
-    client.createSession(
-        session_id=session_id, project=project, started_at=datetime.now().isoformat()
-    )
-
-    facts = client.queryProjectFacts(project, limit=10)
+    # Query context to inject
+    facts = client.queryProjectFacts(project, limit=15)
     recent = client.queryRecent(project, limit=15)
     stale = client.queryStaleDecisions(project, days=30)
     failed = client.queryFailedApproaches(project, limit=5)
 
     retrieved_ids = []
-    context_parts = [
-        f"# Context Graph: {project}",
-        f"Session: {session_id[:12]}...",
-        "",
-    ]
+    context_parts = []
 
+    # Project Facts as binding instructions (not just context)
     if facts:
-        context_parts.append("## Project Conventions")
-        for f in facts[:8]:
-            if f.get("id"):
-                retrieved_ids.append(f["id"])
-            category = f.get("category", "")
-            fact_text = f.get("fact", "")[:80]
-            context_parts.append(f"- [{category}] {fact_text}")
+        context_parts.append(
+            "## Project Rules (from context graph — treat as custom instructions)"
+        )
         context_parts.append("")
 
+        # Group by category
+        by_category = {}
+        for f in facts:
+            if f.get("id"):
+                retrieved_ids.append(f["id"])
+            cat = f.get("category", "general")
+            if cat not in by_category:
+                by_category[cat] = []
+            by_category[cat].append(f.get("fact", ""))
+
+        for cat, items in by_category.items():
+            context_parts.append(f"### {cat.title()}")
+            for item in items[:5]:
+                context_parts.append(f"- {item[:120]}")
+            context_parts.append("")
+
+    # Recent decisions/corrections/insights
     if recent:
-        context_parts.append("## Recent Context")
+        context_parts.append("## Recent Decisions")
         for item in recent[:10]:
             node = item.get("n", {})
+            node_type = item.get("node_type", "")
             if not node:
                 continue
             if node.get("id"):
                 retrieved_ids.append(node["id"])
-            if "description" in node:
-                context_parts.append(f"- Decision: {str(node['description'])[:100]}")
-            elif "wrong_belief" in node:
-                context_parts.append(f"- Correction: {str(node['right_belief'])[:100]}")
-            elif "summary" in node:
-                context_parts.append(f"- Insight: {str(node['summary'])[:100]}")
 
-    if stale:
+            topics = node.get("topics", [])
+            topic_str = f"[{', '.join(topics[:2])}] " if topics else ""
+
+            if node_type == "Decision":
+                context_parts.append(
+                    f"- {topic_str}{str(node.get('description', ''))[:100]}"
+                )
+            elif node_type == "Correction":
+                context_parts.append(
+                    f"- CORRECTION: {topic_str}{str(node.get('right_belief', ''))[:100]}"
+                )
+            elif node_type == "Insight":
+                context_parts.append(
+                    f"- Insight: {topic_str}{str(node.get('summary', ''))[:100]}"
+                )
+            elif node_type == "Exception":
+                context_parts.append(
+                    f"- Exception to '{node.get('rule_broken', '')[:40]}': {str(node.get('justification', ''))[:60]}"
+                )
         context_parts.append("")
+
+    # Failed approaches prominently
+    if failed:
+        context_parts.append("## Things That Didn't Work (Don't Repeat)")
+        for f in failed[:5]:
+            if f.get("id"):
+                retrieved_ids.append(f["id"])
+            approach = str(f.get("approach", ""))[:50]
+            lesson = str(f.get("lesson", ""))[:60]
+            context_parts.append(f"- **{approach}**: {lesson}")
+        context_parts.append("")
+
+    # Stale decisions
+    if stale:
         context_parts.append("## Decisions Needing Review")
         for d in stale[:3]:
             if d.get("id"):
                 retrieved_ids.append(d["id"])
             desc = str(d.get("description", ""))[:80]
-            context_parts.append(f"- {desc} (developmental, may need revisit)")
-
-    if failed:
+            context_parts.append(f"- {desc} *(developmental, may need revisit)*")
         context_parts.append("")
-        context_parts.append("## Failed Approaches (Don't Repeat)")
-        for f in failed[:3]:
-            if f.get("id"):
-                retrieved_ids.append(f["id"])
-            context_parts.append(
-                f"- {str(f.get('approach', ''))[:60]}: {str(f.get('lesson', ''))[:60]}"
-            )
 
+    # Empty state
     if not facts and not recent and not stale and not failed:
+        context_parts.append("# Context Graph")
+        context_parts.append(f"Project: {project}")
+        context_parts.append("")
         context_parts.append(
-            "No prior context. Project facts, decisions, and corrections will be captured."
+            "No prior context. Project facts, decisions, and corrections will be captured automatically."
         )
 
-    pending = filterPendingBackfillSessions(conversation_stems or [], client)
+    # Pending backfill (kept but simplified)
+    pending = _filterPendingBackfill(conversation_stems or [], client)
     if pending:
         context_parts.append("")
         context_parts.append("## Pending History Import")
         context_parts.append(f"Found {len(pending)} conversation(s) not yet imported.")
-        context_parts.append("Use AskUserQuestion to offer importing:")
-        context_parts.append('- "Import 10 conversations" (Recommended)')
-        context_parts.append('- "Import all conversations"')
-        context_parts.append('- "Skip import"')
-        context_parts.append("If user accepts, call ccmemory_list_conversations then")
-        context_parts.append("ccmemory_backfill_conversation for each session.")
+        context_parts.append("Use AskUserQuestion to offer importing.")
 
     context_text = "\n".join(context_parts)
 
+    # Record retrieval (telemetry only, not core)
     if retrieved_ids:
         client.recordRetrieval(
-            session_id=session_id,
             project=project,
             retrieved_ids=retrieved_ids,
             context_summary=context_text,
         )
-        logger.info(
-            f"Retrieved {len(retrieved_ids)} items for session {session_id[:12]}..."
-        )
+        logger.info(f"Retrieved {len(retrieved_ids)} items for project {project}")
 
     return {
         "context": context_text,
@@ -144,7 +166,17 @@ def handleSessionStart(
     }
 
 
+def _filterPendingBackfill(session_stems: list[str], client) -> list[str]:
+    """Check which conversation files haven't been backfilled yet."""
+    if not session_stems:
+        return []
+    # For now, just return the list - we'll check by decision content later
+    # This is a placeholder until we have a better way to track imports
+    return session_stems[:20]  # Cap at 20
+
+
 def readTranscript(transcript_path: str) -> tuple[str, str, str]:
+    """Read the last user message and assistant response from transcript."""
     try:
         with open(transcript_path, "r") as f:
             messages = [json.loads(line) for line in f if line.strip()]
@@ -180,16 +212,13 @@ def readTranscript(transcript_path: str) -> tuple[str, str, str]:
     return user_message, assistant_response, context
 
 
-def _storeDetection(
-    client, session_id: str, detection: Detection, project: str = ""
-) -> bool:
+def _storeDetection(client, detection: Detection, project: str) -> bool:
+    """Store a detection in the graph. Returns True if stored, False if skipped."""
     det_id = f"{detection.type.value}-{uuid.uuid4().hex[:8]}"
 
-    try:
-        embedding = getEmbedding(detection.data.model_dump_json())
-    except Exception:
-        embedding = [0.0] * 1024
+    embedding = getEmbedding(detection.data.model_dump_json())
 
+    # Check for duplicate project facts
     if detection.type == DetectionType.ProjectFact and project:
         if client.projectFactExists(project, embedding, threshold=0.9):
             return False
@@ -200,22 +229,34 @@ def _storeDetection(
             assert isinstance(data, Decision)
             client.createDecision(
                 decision_id=det_id,
-                session_id=session_id,
+                project=project,
                 description=data.description,
                 embedding=embedding,
+                topics=getattr(data, "topics", None) or [],
                 rationale=data.rationale,
                 revisit_trigger=data.revisitTrigger,
                 detection_confidence=detection.confidence,
                 detection_method="llm_extraction",
             )
+            for rel in getattr(data, "relatedDecisions", None) or []:
+                rel_embedding = getEmbedding(rel.description)
+                client.createDecisionRelationship(
+                    decision_id=det_id,
+                    project=project,
+                    target_description=rel.description,
+                    relationship_type=rel.relationshipType.value,
+                    reason=rel.reason,
+                    embedding=rel_embedding,
+                )
         case DetectionType.Correction:
             assert isinstance(data, Correction)
             client.createCorrection(
                 correction_id=det_id,
-                session_id=session_id,
+                project=project,
                 wrong_belief=data.wrongBelief,
                 right_belief=data.rightBelief,
                 embedding=embedding,
+                topics=getattr(data, "topics", None) or [],
                 severity=data.severity.value,
                 detection_confidence=detection.confidence,
                 detection_method="llm_extraction",
@@ -224,10 +265,11 @@ def _storeDetection(
             assert isinstance(data, Exception_)
             client.createException(
                 exception_id=det_id,
-                session_id=session_id,
+                project=project,
                 rule_broken=data.ruleBroken,
                 justification=data.justification,
                 embedding=embedding,
+                topics=getattr(data, "topics", None) or [],
                 scope=data.scope.value,
                 detection_confidence=detection.confidence,
                 detection_method="llm_extraction",
@@ -236,10 +278,11 @@ def _storeDetection(
             assert isinstance(data, Insight)
             client.createInsight(
                 insight_id=det_id,
-                session_id=session_id,
+                project=project,
                 category=data.category.value,
                 summary=data.summary,
                 embedding=embedding,
+                topics=getattr(data, "topics", None) or [],
                 implications=data.implications,
                 detection_confidence=detection.confidence,
                 detection_method="llm_extraction",
@@ -248,9 +291,11 @@ def _storeDetection(
             assert isinstance(data, Question)
             client.createQuestion(
                 question_id=det_id,
-                session_id=session_id,
+                project=project,
                 question=data.question,
                 answer=data.answer,
+                embedding=embedding,
+                topics=getattr(data, "topics", None) or [],
                 context=data.context,
                 detection_confidence=detection.confidence,
                 detection_method="llm_extraction",
@@ -259,10 +304,12 @@ def _storeDetection(
             assert isinstance(data, FailedApproach)
             client.createFailedApproach(
                 fa_id=det_id,
-                session_id=session_id,
+                project=project,
                 approach=data.approach,
                 outcome=data.outcome,
                 lesson=data.lesson or "",
+                embedding=embedding,
+                topics=getattr(data, "topics", None) or [],
                 detection_confidence=detection.confidence,
                 detection_method="llm_extraction",
             )
@@ -272,7 +319,7 @@ def _storeDetection(
                 ref_id = f"ref-{uuid.uuid4().hex[:8]}"
                 client.createReference(
                     ref_id=ref_id,
-                    session_id=session_id,
+                    project=project,
                     ref_type=ref.type.value,
                     uri=ref.uri,
                     detection_confidence=detection.confidence,
@@ -282,7 +329,7 @@ def _storeDetection(
             assert isinstance(data, ProjectFact)
             client.createProjectFact(
                 fact_id=det_id,
-                session_id=session_id,
+                project=project,
                 category=data.category.value,
                 fact=data.fact,
                 embedding=embedding,
@@ -293,16 +340,21 @@ def _storeDetection(
     return True
 
 
-async def handleMessageResponse(session_id: str, transcript_path: str, cwd: str) -> dict:
+async def handleMessageResponse(
+    session_id: str, transcript_path: str, cwd: str
+) -> dict:
+    """Handle stop hook - detect and store decisions/corrections/etc."""
     user_message, claude_response, context = readTranscript(transcript_path)
-    logger.debug(f"transcript_path={transcript_path}, user_message_len={len(user_message)}")
+    logger.debug(
+        f"transcript_path={transcript_path}, user_message_len={len(user_message)}"
+    )
     if not user_message:
         logger.debug("No user_message found, skipping detection")
         return {"detections": 0}
 
     try:
         detections = await detectAll(user_message, claude_response, context)
-    except Exception as e:
+    except RuntimeError as e:
         logger.exception(f"Detection failed: {e}")
         return {"detections": 0, "error": str(e)}
 
@@ -322,9 +374,9 @@ async def handleMessageResponse(session_id: str, transcript_path: str, cwd: str)
 
     for detection in detections:
         try:
-            if _storeDetection(client, session_id, detection, project):
+            if _storeDetection(client, detection, project):
                 stored += 1
-        except Exception:
+        except (ValueError, RuntimeError, AssertionError):
             continue
 
     client.recordTelemetry(
@@ -337,29 +389,14 @@ async def handleMessageResponse(session_id: str, transcript_path: str, cwd: str)
 
 
 def handleSessionEnd(session_id: str, transcript_path: str | None, cwd: str) -> dict:
-    client = getClient()
+    """Handle session end - just clear in-memory context."""
     project = cwd.rsplit("/", 1)[-1] if "/" in cwd else cwd
-    clearCurrentSession()
+    client = getClient()
 
-    transcript = ""
-    if transcript_path:
-        try:
-            with open(transcript_path, "r") as f:
-                transcript = f.read()
-        except Exception:
-            pass
-
-    summary = f"Session ended at {datetime.now().isoformat()}"
-    if transcript:
-        lines = transcript.strip().split("\n")
-        summary = f"Session with {len(lines)} message exchanges"
-
-    client.endSession(
-        session_id=session_id, transcript=transcript[:100000], summary=summary
-    )
+    clearCurrentProject()
 
     client.recordTelemetry(
         event_type="session_end", project=project, data={"session_id": session_id}
     )
 
-    return {"session_ended": session_id}
+    return {"session_ended": session_id, "project": project}

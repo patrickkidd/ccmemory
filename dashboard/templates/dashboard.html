@@ -16,7 +16,7 @@
         .context-question { border-left: 4px solid hsl(48, 100%, 67%); }
         .context-failed { border-left: 4px solid hsl(344, 89%, 54%); }
         .console-log { height: 300px; overflow-y: auto; font-family: monospace; font-size: 0.8rem; padding: 0.5rem; }
-        .filter-btn.is-active { background-color: hsl(171, 100%, 41%); border-color: transparent; color: #fff; }
+        .filter-btn.is-active { background-color: hsl(171, 100%, 41%); border-color: transparent; color: hsl(0, 0%, 100%); }
         .filter-btn:not(.is-active) { opacity: 0.5; }
         .drop-zone { border: 2px dashed; cursor: pointer; }
         .drop-zone.hover { background-color: hsl(217, 71%, 90%); }
@@ -26,6 +26,26 @@
         a.metric-card:hover { transform: scale(1.02); }
         /* Graph styles */
         #cy { height: 450px; border-radius: 4px; }
+        #graph-tooltip {
+            display: none;
+            position: fixed;
+            background: hsl(0, 0%, 20%);
+            color: hsl(0, 0%, 100%);
+            padding: 6px 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            max-width: 300px;
+            z-index: 1000;
+            pointer-events: none;
+            white-space: pre-wrap;
+        }
+        @media (prefers-color-scheme: light) {
+            #graph-tooltip {
+                background: hsl(0, 0%, 100%);
+                color: hsl(0, 0%, 10%);
+                border: 1px solid hsl(0, 0%, 90%);
+            }
+        }
         .graph-legend { display: inline-flex; gap: 0.75rem; flex-wrap: wrap; justify-content: center; }
         .graph-filters { display: flex; gap: 0.75rem; flex-wrap: wrap; }
         .legend-item { display: inline-flex; align-items: center; gap: 0.25rem; font-size: 0.8rem; }
@@ -59,7 +79,6 @@
                 <a class="navbar-item" href="/decisions?project={{ project }}">Decisions</a>
                 <a class="navbar-item" href="/corrections?project={{ project }}">Corrections</a>
                 <a class="navbar-item" href="/insights?project={{ project }}">Insights</a>
-                <a class="navbar-item" href="/sessions?project={{ project }}">Sessions</a>
                 <div class="navbar-item has-dropdown is-hoverable">
                     <a class="navbar-link">More</a>
                     <div class="navbar-dropdown">
@@ -115,12 +134,6 @@
             <!-- Secondary Metrics -->
             <div class="columns is-multiline">
                 <div class="column is-3">
-                    <a href="/sessions?project={{ project }}" class="box metric-card">
-                        <p class="metric-value has-text-grey" id="sessions">-</p>
-                        <p class="metric-label">Sessions</p>
-                    </a>
-                </div>
-                <div class="column is-3">
                     <a href="/failed-approaches?project={{ project }}" class="box metric-card">
                         <p class="metric-value has-text-warning" id="failed">-</p>
                         <p class="metric-label">Failed Approaches</p>
@@ -133,9 +146,15 @@
                     </a>
                 </div>
                 <div class="column is-3">
+                    <a href="/exceptions?project={{ project }}" class="box metric-card">
+                        <p class="metric-value has-text-grey" id="exceptions">-</p>
+                        <p class="metric-label">Exceptions</p>
+                    </a>
+                </div>
+                <div class="column is-3">
                     <div class="box metric-card">
-                        <p class="metric-value" id="reuse-rate">-</p>
-                        <p class="metric-label">Decision Reuse Rate</p>
+                        <p class="metric-value" id="evolution-rate">-</p>
+                        <p class="metric-label">Decision Evolution Rate</p>
                     </div>
                 </div>
             </div>
@@ -170,6 +189,7 @@
                     <div class="box">
                         <h2 class="title is-4">Knowledge Graph</h2>
                         <div id="cy"></div>
+                        <div id="graph-tooltip"></div>
                         <div class="has-text-centered mt-3">
                             <div class="graph-legend" id="graph-legend"></div>
                         </div>
@@ -382,6 +402,21 @@
                     document.getElementById('node-detail').classList.remove('is-visible');
                 }
             });
+
+            // Tooltip on hover
+            const tooltip = document.getElementById('graph-tooltip');
+            cy.on('mouseover', 'node', function(evt) {
+                const node = evt.target.data();
+                tooltip.textContent = node.label || node.id;
+                tooltip.style.display = 'block';
+                const pos = evt.renderedPosition;
+                const container = document.getElementById('cy').getBoundingClientRect();
+                tooltip.style.left = (container.left + pos.x + 10) + 'px';
+                tooltip.style.top = (container.top + pos.y - 30) + 'px';
+            });
+            cy.on('mouseout', 'node', function() {
+                tooltip.style.display = 'none';
+            });
         }
 
         function showNodeDetail(node) {
@@ -537,10 +572,10 @@
                 document.getElementById('decisions').textContent = data.total_decisions;
                 document.getElementById('corrections').textContent = data.total_corrections;
                 document.getElementById('insights').textContent = data.total_insights;
-                document.getElementById('sessions').textContent = data.total_sessions;
                 document.getElementById('failed').textContent = data.total_failed_approaches;
                 document.getElementById('project-facts').textContent = data.total_project_facts;
-                document.getElementById('reuse-rate').textContent = (data.decision_reuse_rate * 100).toFixed(1) + '%';
+                document.getElementById('exceptions').textContent = data.total_exceptions || 0;
+                document.getElementById('evolution-rate').textContent = ((data.decision_evolution_rate || 0) * 100).toFixed(1) + '%';
             } catch (error) {
                 console.error('Failed to load metrics:', error);
             }
@@ -789,7 +824,6 @@
                         `(${data.files_skipped} skipped)`
                     );
                     loadMetrics();
-                    loadRecentContext();
                 }
             } catch (err) {
                 showImportStatus('error', 'Upload failed: ' + err.message);
@@ -820,7 +854,6 @@
                 } else {
                     alert(`Deleted ${data.deleted} nodes`);
                     loadMetrics();
-                    loadRecentContext();
                 }
             } catch (err) {
                 alert('Failed to clear database: ' + err.message);

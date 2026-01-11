@@ -49,11 +49,27 @@ class ReferenceType(enum.StrEnum):
     FilePath = "file_path"
 
 
+class RelationType(enum.StrEnum):
+    Supersedes = "SUPERSEDES"
+    DependsOn = "DEPENDS_ON"
+    Constrains = "CONSTRAINS"
+    ConflictsWith = "CONFLICTS_WITH"
+    Impacts = "IMPACTS"
+
+
+class RelatedDecision(BaseModel):
+    description: str
+    relationshipType: RelationType
+    reason: str
+
+
 class Decision(BaseModel):
     confidence: float
     description: str
     rationale: str | None = None
     revisitTrigger: str | None = None
+    topics: list[str] = []
+    relatedDecisions: list[RelatedDecision] = []
 
 
 class Correction(BaseModel):
@@ -61,6 +77,7 @@ class Correction(BaseModel):
     wrongBelief: str
     rightBelief: str
     severity: Severity = Severity.Significant
+    topics: list[str] = []
 
 
 class Exception_(BaseModel):
@@ -68,6 +85,7 @@ class Exception_(BaseModel):
     ruleBroken: str
     justification: str
     scope: ExceptionScope = ExceptionScope.OneTime
+    topics: list[str] = []
 
 
 class Insight(BaseModel):
@@ -75,6 +93,7 @@ class Insight(BaseModel):
     category: InsightCategory = InsightCategory.Realization
     summary: str
     implications: str | None = None
+    topics: list[str] = []
 
 
 class Question(BaseModel):
@@ -82,6 +101,7 @@ class Question(BaseModel):
     question: str
     answer: str
     context: str | None = None
+    topics: list[str] = []
 
 
 class FailedApproach(BaseModel):
@@ -89,6 +109,7 @@ class FailedApproach(BaseModel):
     approach: str
     outcome: str
     lesson: str | None = None
+    topics: list[str] = []
 
 
 class ProjectFact(BaseModel):
@@ -96,6 +117,7 @@ class ProjectFact(BaseModel):
     category: FactCategory = FactCategory.Convention
     fact: str
     context: str | None = None
+    topics: list[str] = []
 
 
 class Reference(BaseModel):
@@ -120,7 +142,16 @@ class DetectionOutput(BaseModel):
 class Detection(BaseModel):
     type: DetectionType
     confidence: float
-    data: Decision | Correction | Exception_ | Insight | Question | FailedApproach | ProjectFact | ReferenceData
+    data: (
+        Decision
+        | Correction
+        | Exception_
+        | Insight
+        | Question
+        | FailedApproach
+        | ProjectFact
+        | ReferenceData
+    )
 
 
 class RerankResult(BaseModel):

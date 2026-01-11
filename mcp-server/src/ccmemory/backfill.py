@@ -64,7 +64,7 @@ def isConversationWorthImporting(path: Path) -> bool:
     try:
         with open(path, "r") as f:
             content = f.read(50000)  # Sample first 50KB
-    except Exception:
+    except (FileNotFoundError, IOError):
         return False
 
     # Check text ratio - skip if mostly tool_use/images
@@ -176,26 +176,16 @@ async def backfillConversations(
     progress_callback=None,
 ) -> dict:
     client = None if dry_run else getClient()
-    conversation_files = getConversationFiles(project)
-
-    if limit:
-        conversation_files = conversation_files[:limit]
+    conversation_files = getFilteredConversationFiles(project, limit)
 
     stats = {
-        "sessions_found": len(conversation_files),
-        "sessions_processed": 0,
-        "sessions_skipped": 0,
+        "files_found": len(conversation_files),
+        "files_processed": 0,
         "pairs_analyzed": 0,
         "detections_stored": 0,
     }
 
     for i, conv_file in enumerate(conversation_files):
-        session_id = getSessionIdFromPath(conv_file)
-
-        if not dry_run and client.sessionExists(session_id):
-            stats["sessions_skipped"] += 1
-            continue
-
         if progress_callback:
             progress_callback(i + 1, len(conversation_files), conv_file.name)
 
@@ -204,16 +194,9 @@ async def backfillConversations(
             continue
 
         if dry_run:
-            stats["sessions_processed"] += 1
+            stats["files_processed"] += 1
             stats["pairs_analyzed"] += len(pairs)
             continue
-
-        file_mtime = datetime.fromtimestamp(conv_file.stat().st_mtime)
-        client.createSession(
-            session_id=session_id,
-            project=project,
-            started_at=file_mtime.isoformat(),
-        )
 
         for user_msg, assistant_msg, context in pairs:
             stats["pairs_analyzed"] += 1
@@ -226,13 +209,13 @@ async def backfillConversations(
 
             for detection in detections:
                 try:
-                    if _storeDetection(client, session_id, detection):
+                    if _storeDetection(client, detection, project):
                         stats["detections_stored"] += 1
                 except Exception as e:
                     logging.debug("Failed to store detection: %s", e)
                     continue
 
-        stats["sessions_processed"] += 1
+        stats["files_processed"] += 1
 
     return stats
 
@@ -265,20 +248,11 @@ async def backfillConversationContent(
     """Backfill a single conversation from JSONL content passed by Claude Code."""
     client = None if dry_run else getClient()
 
-    # Use deterministic session ID based on content hash for deduplication
-    content_hash = hashlib.sha256(jsonl_content.encode()).hexdigest()[:16]
-    full_session_id = f"backfill-{session_id}-{content_hash}"
-
     stats = {
-        "session_id": full_session_id,
-        "already_imported": False,
+        "session_id": session_id,
         "pairs_analyzed": 0,
         "detections_stored": 0,
     }
-
-    if not dry_run and client.sessionExists(full_session_id):
-        stats["already_imported"] = True
-        return stats
 
     pairs = parseConversationContent(jsonl_content)
     if not pairs:
@@ -287,12 +261,6 @@ async def backfillConversationContent(
     if dry_run:
         stats["pairs_analyzed"] = len(pairs)
         return stats
-
-    client.createSession(
-        session_id=full_session_id,
-        project=project,
-        started_at=datetime.now().isoformat(),
-    )
 
     logger = logging.getLogger("ccmemory")
     for user_msg, assistant_msg, context in pairs:
@@ -304,7 +272,11 @@ async def backfillConversationContent(
                 types = [d.type.value for d in detections]
                 logger.info(
                     f"Pair {stats['pairs_analyzed']}: found {', '.join(types)}",
-                    extra={"cat": "tool", "event": "backfill-detect", "project": project},
+                    extra={
+                        "cat": "tool",
+                        "event": "backfill-detect",
+                        "project": project,
+                    },
                 )
         except Exception as e:
             logger.warning(
@@ -315,9 +287,8 @@ async def backfillConversationContent(
 
         for detection in detections:
             try:
-                if _storeDetection(client, full_session_id, detection):
+                if _storeDetection(client, detection, project):
                     stats["detections_stored"] += 1
-                    # Get a preview of what was stored
                     data = detection.data
                     preview = ""
                     if hasattr(data, "description"):
@@ -385,25 +356,11 @@ async def backfillMarkdownContent(
                 stats["decisions_imported"] += 1
                 continue
 
-            try:
-                embedding = getEmbedding(f"{entry['description']} {entry['rationale']}")
-            except Exception:
-                embedding = [0.0] * 384
-
-            # Create session for this backfill if needed
-            backfill_session_id = _deterministicId(
-                "session", project, "markdown-backfill"
-            )
-            if not client.sessionExists(backfill_session_id):
-                client.createSession(
-                    session_id=backfill_session_id,
-                    project=project,
-                    started_at=datetime.now().isoformat(),
-                )
+            embedding = getEmbedding(f"{entry['description']} {entry['rationale']}")
 
             client.createDecision(
                 decision_id=decision_id,
-                session_id=backfill_session_id,
+                project=project,
                 description=entry["description"],
                 embedding=embedding,
                 rationale=entry["rationale"],
@@ -524,17 +481,6 @@ async def backfillMarkdown(
         "chunks_created": 0,
     }
 
-    backfill_session_id = (
-        f"backfill-markdown-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
-    )
-
-    if not dry_run:
-        client.createSession(
-            session_id=backfill_session_id,
-            project=project,
-            started_at=datetime.now().isoformat(),
-        )
-
     for i, md_file in enumerate(md_files):
         if progress_callback:
             progress_callback(
@@ -543,7 +489,7 @@ async def backfillMarkdown(
 
         try:
             content = md_file.read_text()
-        except Exception:
+        except (FileNotFoundError, IOError, OSError):
             continue
 
         relative_path = str(md_file.relative_to(project_root))
@@ -559,16 +505,11 @@ async def backfillMarkdown(
             for entry in entries:
                 decision_id = f"backfill-decision-{uuid.uuid4().hex[:8]}"
 
-                try:
-                    embedding = getEmbedding(
-                        f"{entry['description']} {entry['rationale']}"
-                    )
-                except Exception:
-                    embedding = [0.0] * 384
+                embedding = getEmbedding(f"{entry['description']} {entry['rationale']}")
 
-                client.createDecision(
+                result = client.createDecision(
                     decision_id=decision_id,
-                    session_id=backfill_session_id,
+                    project=project,
                     description=entry["description"],
                     embedding=embedding,
                     rationale=entry["rationale"],
@@ -576,12 +517,16 @@ async def backfillMarkdown(
                     detection_confidence=1.0,
                     detection_method="backfill_import",
                 )
-                stats["decisions_imported"] += 1
+                if result.get("action") != "skipped":
+                    stats["decisions_imported"] += 1
         else:
             if dry_run:
                 stats["reference_files_indexed"] += 1
                 sections = re.split(r"^#{1,3}\s+", content, flags=re.MULTILINE)
                 stats["chunks_created"] += len([s for s in sections if s.strip()])
+                continue
+
+            if client.referenceFileExists(project, relative_path):
                 continue
 
             chunks = _indexFile(md_file, str(project_root), client)

@@ -54,10 +54,7 @@ def registerBackfillTools(mcp: FastMCP):
     @mcp.tool()
     @logTool
     async def ccmemory_backfill_conversation(
-        project: str,
-        session_id: str,
-        jsonl_content: str,
-        dry_run: bool = False
+        project: str, session_id: str, jsonl_content: str, dry_run: bool = False
     ) -> dict:
         """Import a Claude Code JSONL conversation file into ccmemory's context graph.
 
@@ -71,15 +68,15 @@ def registerBackfillTools(mcp: FastMCP):
             dry_run: If true, preview without storing
         """
         from ..backfill import backfillConversationContent
-        return await backfillConversationContent(project, session_id, jsonl_content, dry_run)
+
+        return await backfillConversationContent(
+            project, session_id, jsonl_content, dry_run
+        )
 
     @mcp.tool()
     @logTool
     async def ccmemory_backfill_markdown(
-        project: str,
-        file_path: str,
-        content: str,
-        dry_run: bool = False
+        project: str, file_path: str, content: str, dry_run: bool = False
     ) -> dict:
         """Import a markdown file into ccmemory's context graph.
 
@@ -93,4 +90,32 @@ def registerBackfillTools(mcp: FastMCP):
             dry_run: If true, preview without storing
         """
         from ..backfill import backfillMarkdownContent
+
         return await backfillMarkdownContent(project, file_path, content, dry_run)
+
+    @mcp.tool()
+    @logTool
+    async def ccmemory_backfill_project(
+        project_path: str,
+        dry_run: bool = False,
+        conversation_limit: int | None = None,
+    ) -> dict:
+        """Import ALL markdown files AND conversation history from a project.
+
+        Scans the project directory for:
+        1. Markdown files (.md) - Decision logs become Decision nodes, others become
+           Reference chunks for semantic search
+        2. Claude Code conversations from ~/.claude/projects/ - Analyzes user/assistant
+           exchanges and extracts decisions, corrections, insights, etc.
+
+        Args:
+            project_path: Absolute path to the project root (e.g. "/Users/patrick/career")
+            dry_run: If true, preview what would be imported without storing
+            conversation_limit: Max conversations to import (None = all)
+        """
+        from ..backfill import backfillAll
+
+        project_root = Path(project_path)
+        if not project_root.exists():
+            return {"error": f"Project path does not exist: {project_path}"}
+        return await backfillAll(project_root, dry_run, conversation_limit)
