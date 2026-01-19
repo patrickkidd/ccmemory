@@ -61,6 +61,9 @@
         #node-detail { max-height: 200px; overflow-y: auto; display: none; }
         #node-detail.is-visible { display: block; }
         .node-detail-label { font-weight: 600; }
+        .msg-compact { padding: 0.75rem; }
+        #context-preview-content { white-space: pre-wrap; word-break: break-word; }
+        #context-preview-box { max-height: 400px; overflow-y: auto; }
     </style>
     <script src="https://unpkg.com/cytoscape@3.28.1/dist/cytoscape.min.js"></script>
 </head>
@@ -210,6 +213,34 @@
                                 </div>
                             </div>
                         </div>
+                        <!-- Session Context Preview (collapsible) -->
+                        <details class="mt-4" id="context-preview-details">
+                            <summary class="is-clickable has-text-weight-semibold">
+                                Session Context Preview
+                                <span class="tag is-info is-light ml-2" id="context-item-count">0 items</span>
+                            </summary>
+                            <div class="mt-3">
+                                <article class="message is-info is-small">
+                                    <div class="message-body msg-compact">
+                                        <strong>When is this injected?</strong> This context is automatically injected at the start of every Claude Code session via the <code>session_start.sh</code> hook. Claude receives this as additional system context before your first message.
+                                    </div>
+                                </article>
+                                <article class="message is-small">
+                                    <div class="message-body msg-compact">
+                                        <strong>How is it synthesized?</strong> The context is assembled from the graph in priority order:
+                                        <ol class="ml-4 mt-1 is-size-7">
+                                            <li><strong>Project Facts</strong> (up to 15) — grouped by category, treated as binding instructions</li>
+                                            <li><strong>Recent Items</strong> (up to 10) — Decisions, Corrections, Insights, Exceptions sorted by timestamp</li>
+                                            <li><strong>Failed Approaches</strong> (up to 5) — explicitly surfaced to prevent repeated mistakes</li>
+                                            <li><strong>Stale Decisions</strong> (up to 3) — developmental decisions older than 30 days flagged for review</li>
+                                        </ol>
+                                    </div>
+                                </article>
+                                <div class="box" id="context-preview-box">
+                                    <pre id="context-preview-content" class="is-size-7">Loading...</pre>
+                                </div>
+                            </div>
+                        </details>
                     </div>
                 </div>
             </div>
@@ -654,6 +685,25 @@
             if (e.key === 'Enter') doSearch();
         });
 
+        async function loadContextPreview() {
+            try {
+                const response = await fetch(`/api/session-context?project=${project}`);
+                const data = await response.json();
+                document.getElementById('context-preview-content').textContent = data.context || 'No context available';
+                document.getElementById('context-item-count').textContent = `${data.retrieved_count || 0} items`;
+            } catch (error) {
+                console.error('Failed to load context preview:', error);
+                document.getElementById('context-preview-content').textContent = 'Failed to load context';
+            }
+        }
+
+        // Load context when details is opened (lazy load)
+        document.getElementById('context-preview-details').addEventListener('toggle', function() {
+            if (this.open) {
+                loadContextPreview();
+            }
+        });
+
         loadMetrics();
         updateLegend();
         initGraph();
@@ -719,6 +769,18 @@
                 try {
                     const log = JSON.parse(e.data);
                     const cat = log.cat || 'mcp';
+
+                    // Auto-refresh graph/context when nodes are created for this project
+                    if (log.event === 'node_created' && log.project === project) {
+                        initGraph();
+                        loadMetrics();
+                        // Refresh context preview if it's open
+                        const details = document.getElementById('context-preview-details');
+                        if (details.open) {
+                            loadContextPreview();
+                        }
+                    }
+
                     if (!filters[cat]) return;
 
                     const div = document.createElement('div');

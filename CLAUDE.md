@@ -31,6 +31,7 @@ The vision doc synthesizes these articles with Patrick's thinking. If vision doc
 - Only rebuild/redeploy docker images when debugging container-specific issues
 - Use `uv` for all Python commands (e.g., `uv run pytest`, `uv pip install`)
 - **AS_BUILT.md**: Read `doc/AS_BUILT.md` before making changes. **ALWAYS update it after completing implementation work** — this is mandatory, not optional
+- **DASHBOARD.md**: Update `doc/DASHBOARD.md` when work queue items change status (completed, new items discovered, priorities shift). This is the user's return-to-project reference.
 
 ## Session Startup Requirement
 

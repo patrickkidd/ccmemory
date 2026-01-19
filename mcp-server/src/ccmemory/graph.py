@@ -229,13 +229,23 @@ class GraphClient:
         if superseded_ids:
             logger.info(
                 f"Created Decision id={decision_id[:12]}... supersedes {len(superseded_ids)} prior ({duration}ms)",
-                extra={"cat": "tool"},
+                extra={
+                    "cat": "tool",
+                    "event": "node_created",
+                    "node_type": "Decision",
+                    "project": project,
+                },
             )
             return {"action": "superseded", "superseded_ids": superseded_ids}
         else:
             logger.info(
                 f"Created Decision id={decision_id[:12]}... ({duration}ms)",
-                extra={"cat": "tool"},
+                extra={
+                    "cat": "tool",
+                    "event": "node_created",
+                    "node_type": "Decision",
+                    "project": project,
+                },
             )
             return {"action": "created"}
 
@@ -259,7 +269,11 @@ class GraphClient:
                 f"Skipped duplicate Correction (score={dup['score']:.3f}) ({duration}ms)",
                 extra={"cat": "tool"},
             )
-            return {"action": "skipped", "existing_id": dup["id"], "similarity": dup["score"]}
+            return {
+                "action": "skipped",
+                "existing_id": dup["id"],
+                "similarity": dup["score"],
+            }
 
         with self.driver.session() as session:
             session.run(
@@ -286,7 +300,12 @@ class GraphClient:
         duration = int((time.time() - start) * 1000)
         logger.info(
             f"Created Correction id={correction_id[:12]}... ({duration}ms)",
-            extra={"cat": "tool"},
+            extra={
+                "cat": "tool",
+                "event": "node_created",
+                "node_type": "Correction",
+                "project": project,
+            },
         )
         return {"action": "created"}
 
@@ -310,7 +329,11 @@ class GraphClient:
                 f"Skipped duplicate Exception (score={dup['score']:.3f}) ({duration}ms)",
                 extra={"cat": "tool"},
             )
-            return {"action": "skipped", "existing_id": dup["id"], "similarity": dup["score"]}
+            return {
+                "action": "skipped",
+                "existing_id": dup["id"],
+                "similarity": dup["score"],
+            }
 
         with self.driver.session() as session:
             session.run(
@@ -337,7 +360,12 @@ class GraphClient:
         duration = int((time.time() - start) * 1000)
         logger.info(
             f"Created Exception id={exception_id[:12]}... ({duration}ms)",
-            extra={"cat": "tool"},
+            extra={
+                "cat": "tool",
+                "event": "node_created",
+                "node_type": "Exception",
+                "project": project,
+            },
         )
         return {"action": "created"}
 
@@ -361,7 +389,11 @@ class GraphClient:
                 f"Skipped duplicate Insight (score={dup['score']:.3f}) ({duration}ms)",
                 extra={"cat": "tool"},
             )
-            return {"action": "skipped", "existing_id": dup["id"], "similarity": dup["score"]}
+            return {
+                "action": "skipped",
+                "existing_id": dup["id"],
+                "similarity": dup["score"],
+            }
 
         with self.driver.session() as session:
             session.run(
@@ -388,7 +420,12 @@ class GraphClient:
         duration = int((time.time() - start) * 1000)
         logger.info(
             f"Created Insight id={insight_id[:12]}... ({duration}ms)",
-            extra={"cat": "tool"},
+            extra={
+                "cat": "tool",
+                "event": "node_created",
+                "node_type": "Insight",
+                "project": project,
+            },
         )
         return {"action": "created"}
 
@@ -413,7 +450,11 @@ class GraphClient:
                     f"Skipped duplicate Question (score={dup['score']:.3f}) ({duration}ms)",
                     extra={"cat": "tool"},
                 )
-                return {"action": "skipped", "existing_id": dup["id"], "similarity": dup["score"]}
+                return {
+                    "action": "skipped",
+                    "existing_id": dup["id"],
+                    "similarity": dup["score"],
+                }
 
         with self.driver.session() as session:
             session.run(
@@ -440,7 +481,12 @@ class GraphClient:
         duration = int((time.time() - start) * 1000)
         logger.info(
             f"Created Question id={question_id[:12]}... ({duration}ms)",
-            extra={"cat": "tool"},
+            extra={
+                "cat": "tool",
+                "event": "node_created",
+                "node_type": "Question",
+                "project": project,
+            },
         )
         return {"action": "created"}
 
@@ -466,7 +512,11 @@ class GraphClient:
                     f"Skipped duplicate FailedApproach (score={dup['score']:.3f}) ({duration}ms)",
                     extra={"cat": "tool"},
                 )
-                return {"action": "skipped", "existing_id": dup["id"], "similarity": dup["score"]}
+                return {
+                    "action": "skipped",
+                    "existing_id": dup["id"],
+                    "similarity": dup["score"],
+                }
 
         with self.driver.session() as session:
             session.run(
@@ -495,7 +545,12 @@ class GraphClient:
         duration = int((time.time() - start) * 1000)
         logger.info(
             f"Created FailedApproach id={fa_id[:12]}... ({duration}ms)",
-            extra={"cat": "tool"},
+            extra={
+                "cat": "tool",
+                "event": "node_created",
+                "node_type": "FailedApproach",
+                "project": project,
+            },
         )
         return {"action": "created"}
 
@@ -530,7 +585,12 @@ class GraphClient:
         duration = int((time.time() - start) * 1000)
         logger.info(
             f"Created Reference id={ref_id[:12]}... ({duration}ms)",
-            extra={"cat": "tool"},
+            extra={
+                "cat": "tool",
+                "event": "node_created",
+                "node_type": "Reference",
+                "project": project,
+            },
         )
 
     def createDecisionRelationship(
@@ -638,7 +698,12 @@ class GraphClient:
         duration = int((time.time() - start) * 1000)
         logger.info(
             f"Created ProjectFact id={fact_id[:12]}... ({duration}ms)",
-            extra={"cat": "tool"},
+            extra={
+                "cat": "tool",
+                "event": "node_created",
+                "node_type": "ProjectFact",
+                "project": project,
+            },
         )
 
     # === Domain 1: Query Functions ===

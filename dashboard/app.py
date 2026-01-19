@@ -635,6 +635,161 @@ def retrievals():
         return jsonify([serialize_node(dict(r["r"])) for r in result])
 
 
+@app.route("/api/session-context")
+def session_context():
+    project = request.args.get("project", "")
+    if not project:
+        return jsonify({"error": "Project required"}), 400
+
+    driver = getDriver()
+    parts = []
+    ids = []
+
+    with driver.session() as session:
+        # Project Facts
+        facts_result = session.run(
+            """
+            MATCH (pf:ProjectFact {project: $project})
+            RETURN pf ORDER BY pf.timestamp DESC LIMIT 15
+            """,
+            project=project,
+        )
+        facts = [dict(r["pf"]) for r in facts_result]
+
+        if facts:
+            parts.append(
+                "## Project Rules (from context graph — treat as custom instructions)"
+            )
+            parts.append("")
+
+            by_category = {}
+            for f in facts:
+                if f.get("id"):
+                    ids.append(f["id"])
+                cat = f.get("category", "general")
+                if cat not in by_category:
+                    by_category[cat] = []
+                by_category[cat].append(f.get("fact", ""))
+
+            for cat, items in by_category.items():
+                parts.append(f"### {cat.title()}")
+                for item in items[:5]:
+                    parts.append(f"- {item[:120]}")
+                parts.append("")
+
+        # Recent items (union query)
+        recent_result = session.run(
+            """
+            CALL {
+                MATCH (n:Decision {project: $project})
+                RETURN n, 'Decision' as node_type, n.timestamp as ts
+                UNION ALL
+                MATCH (n:Correction {project: $project})
+                RETURN n, 'Correction' as node_type, n.timestamp as ts
+                UNION ALL
+                MATCH (n:Insight {project: $project})
+                RETURN n, 'Insight' as node_type, n.timestamp as ts
+                UNION ALL
+                MATCH (n:Exception {project: $project})
+                RETURN n, 'Exception' as node_type, n.timestamp as ts
+                UNION ALL
+                MATCH (n:FailedApproach {project: $project})
+                RETURN n, 'FailedApproach' as node_type, n.timestamp as ts
+            }
+            RETURN n, node_type ORDER BY ts DESC LIMIT 15
+            """,
+            project=project,
+        )
+        recent = [{"n": dict(r["n"]), "node_type": r["node_type"]} for r in recent_result]
+
+        if recent:
+            parts.append("## Recent Decisions")
+            for item in recent[:10]:
+                node = item.get("n", {})
+                node_type = item.get("node_type", "")
+                if not node:
+                    continue
+                if node.get("id"):
+                    ids.append(node["id"])
+
+                topics = node.get("topics", [])
+                topic_str = f"[{', '.join(topics[:2])}] " if topics else ""
+
+                if node_type == "Decision":
+                    parts.append(
+                        f"- {topic_str}{str(node.get('description', ''))[:100]}"
+                    )
+                elif node_type == "Correction":
+                    parts.append(
+                        f"- CORRECTION: {topic_str}{str(node.get('right_belief', ''))[:100]}"
+                    )
+                elif node_type == "Insight":
+                    parts.append(
+                        f"- Insight: {topic_str}{str(node.get('summary', ''))[:100]}"
+                    )
+                elif node_type == "Exception":
+                    parts.append(
+                        f"- Exception to '{node.get('rule_broken', '')[:40]}': {str(node.get('justification', ''))[:60]}"
+                    )
+            parts.append("")
+
+        # Failed approaches
+        failed_result = session.run(
+            """
+            MATCH (f:FailedApproach {project: $project})
+            RETURN f ORDER BY f.timestamp DESC LIMIT 5
+            """,
+            project=project,
+        )
+        failed = [dict(r["f"]) for r in failed_result]
+
+        if failed:
+            parts.append("## Things That Didn't Work (Don't Repeat)")
+            for f in failed[:5]:
+                if f.get("id"):
+                    ids.append(f["id"])
+                approach = str(f.get("approach", ""))[:50]
+                lesson = str(f.get("lesson", ""))[:60]
+                parts.append(f"- **{approach}**: {lesson}")
+            parts.append("")
+
+        # Stale decisions
+        stale_result = session.run(
+            """
+            MATCH (d:Decision {project: $project})
+            WHERE d.status = 'developmental'
+              AND d.timestamp < datetime() - duration({days: 30})
+            RETURN d ORDER BY d.timestamp DESC LIMIT 3
+            """,
+            project=project,
+        )
+        stale = [dict(r["d"]) for r in stale_result]
+
+        if stale:
+            parts.append("## Decisions Needing Review")
+            for d in stale[:3]:
+                if d.get("id"):
+                    ids.append(d["id"])
+                desc = str(d.get("description", ""))[:80]
+                parts.append(f"- {desc} *(developmental, may need revisit)*")
+            parts.append("")
+
+        # Empty state
+        if not facts and not recent and not stale and not failed:
+            parts.append("# Context Graph")
+            parts.append(f"Project: {project}")
+            parts.append("")
+            parts.append(
+                "No prior context. Project facts, decisions, and corrections will be captured automatically."
+            )
+
+    context_text = "\n".join(parts)
+    return jsonify({
+        "context": context_text,
+        "retrieved_count": len(ids),
+    })
+
+
 @app.route("/api/projects")
 def projects():
     driver = getDriver()
