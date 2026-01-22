@@ -90,7 +90,11 @@ EXTRACTION RULES
 
 6. **DECISION RELATIONSHIPS**: For decisions, identify relationships to prior
    decisions when the conversation references them:
-   - SUPERSEDES: This decision replaces/updates a prior decision
+   - CONTINUES: This decision extends/builds on a prior decision (same trace)
+     Examples: "Building on the auth decision...", "Since we decided X..."
+   - SUPERSEDES: This decision REPLACES/invalidates a prior decision
+     Examples: "Instead of X, let's do Y", "Actually, changed my mind about..."
+     IMPORTANT: SUPERSEDES means the old decision is no longer valid
    - DEPENDS_ON: This decision requires a prior decision to hold
    - CONSTRAINS: This decision limits options for another area
    - CONFLICTS_WITH: This decision contradicts a prior decision
@@ -98,6 +102,9 @@ EXTRACTION RULES
 
    Include as `relatedDecisions` with description of the prior decision,
    relationship type, and reason. Only include if explicitly referenced.
+
+   For CONTINUES: Also set `continuesDecision` field with description of the
+   prior decision being continued. This links decisions into traces.
 
 ═══════════════════════════════════════════════════════════════════════════════
 EXAMPLES

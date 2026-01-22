@@ -132,11 +132,17 @@ class GraphClient:
         description: str,
         embedding: list,
         topics: list[str] | None = None,
+        trace_id: str | None = None,
+        continues_decision: str | None = None,
         **kwargs,
     ) -> dict:
         """Create a decision with deduplication and auto-linking.
 
-        Returns dict with 'action': 'created', 'skipped', or 'superseded'
+        Args:
+            trace_id: Optional trace identifier for grouping related decisions
+            continues_decision: Description of prior decision this continues (for linking)
+
+        Returns dict with 'action': 'created' or 'skipped'
         """
         logger.debug(f"createDecision(id={decision_id[:12]}..., project={project})")
         start = time.time()
@@ -180,7 +186,8 @@ class GraphClient:
                     d.user_id = $user_id,
                     d.status = 'developmental',
                     d.embedding = $embedding,
-                    d.topics = $topics
+                    d.topics = $topics,
+                    d.trace_id = $trace_id
                 SET d += $props
                 """,
                 decision_id=decision_id,
@@ -189,11 +196,41 @@ class GraphClient:
                 user_id=self.user_id,
                 embedding=embedding,
                 topics=topics or [],
+                trace_id=trace_id,
                 props=kwargs,
             )
 
-            # Link to similar prior decisions
-            superseded_ids = []
+            # If this continues a prior decision, create CONTINUES edge and inherit trace_id
+            continued_id = None
+            if continues_decision and embedding:
+                cont_result = session.run(
+                    """
+                    MATCH (d:Decision {id: $decision_id})
+                    CALL db.index.vector.queryNodes('decision_embedding', 3, $embedding)
+                    YIELD node, score
+                    WHERE node.project = $project
+                      AND node.id <> $decision_id
+                      AND score > 0.7
+                    WITH d, node, score
+                    ORDER BY score DESC
+                    LIMIT 1
+                    CREATE (d)-[:CONTINUES {similarity: score, auto: false}]->(node)
+                    WITH d, node
+                    WHERE node.trace_id IS NOT NULL AND d.trace_id IS NULL
+                    SET d.trace_id = node.trace_id
+                    RETURN node.id as continued_id, node.trace_id as inherited_trace
+                    """,
+                    decision_id=decision_id,
+                    embedding=embedding,
+                    project=project,
+                )
+                cont_record = cont_result.single()
+                if cont_record:
+                    continued_id = cont_record["continued_id"]
+
+            # Link to similar OLDER decisions via CITES (DAG structure: newer→older)
+            # SUPERSEDES should only be created via explicit LLM detection, not similarity
+            cited_ids = []
             if embedding:
                 link_result = session.run(
                     """
@@ -202,52 +239,41 @@ class GraphClient:
                     YIELD node, score
                     WHERE node.project = $project
                       AND node.id <> $decision_id
-                      AND score > 0.8
-                    WITH d, node, score
-                    CALL {
-                        WITH d, node, score
-                        WITH d, node, score WHERE score > 0.85
-                        CREATE (d)-[:SUPERSEDES {similarity: score, auto: true}]->(node)
-                        RETURN 'superseded' as rel_type
-                        UNION ALL
-                        WITH d, node, score
-                        WITH d, node, score WHERE score <= 0.85 AND score > 0.8
-                        CREATE (d)-[:CITES {similarity: score, auto: true}]->(node)
-                        RETURN 'cited' as rel_type
-                    }
-                    RETURN node.id as linked_id, score, rel_type
+                      AND node.timestamp < d.timestamp
+                      AND score > 0.85
+                    CREATE (d)-[:CITES {similarity: score, auto: true}]->(node)
+                    RETURN node.id as linked_id, score
                     """,
                     decision_id=decision_id,
                     embedding=embedding,
                     project=project,
                 )
-                for record in link_result:
-                    if record["rel_type"] == "superseded":
-                        superseded_ids.append(record["linked_id"])
+                cited_ids = [record["linked_id"] for record in link_result]
 
         duration = int((time.time() - start) * 1000)
-        if superseded_ids:
-            logger.info(
-                f"Created Decision id={decision_id[:12]}... supersedes {len(superseded_ids)} prior ({duration}ms)",
-                extra={
-                    "cat": "tool",
-                    "event": "node_created",
-                    "node_type": "Decision",
-                    "project": project,
-                },
-            )
-            return {"action": "superseded", "superseded_ids": superseded_ids}
-        else:
-            logger.info(
-                f"Created Decision id={decision_id[:12]}... ({duration}ms)",
-                extra={
-                    "cat": "tool",
-                    "event": "node_created",
-                    "node_type": "Decision",
-                    "project": project,
-                },
-            )
-            return {"action": "created"}
+        result = {"action": "created"}
+        if continued_id:
+            result["continues_id"] = continued_id
+        if cited_ids:
+            result["cited_ids"] = cited_ids
+
+        links = []
+        if continued_id:
+            links.append(f"continues 1")
+        if cited_ids:
+            links.append(f"cites {len(cited_ids)}")
+        link_str = f" ({', '.join(links)})" if links else ""
+
+        logger.info(
+            f"Created Decision id={decision_id[:12]}...{link_str} ({duration}ms)",
+            extra={
+                "cat": "tool",
+                "event": "node_created",
+                "node_type": "Decision",
+                "project": project,
+            },
+        )
+        return result
 
     def createCorrection(
         self,
@@ -637,13 +663,14 @@ class GraphClient:
                 return False
 
             rel_type = relationship_type.upper().replace(" ", "_")
-            if rel_type not in (
+            valid_types = {
                 "SUPERSEDES",
                 "DEPENDS_ON",
                 "CONSTRAINS",
                 "CONFLICTS_WITH",
                 "IMPACTS",
-            ):
+            }
+            if rel_type not in valid_types:
                 logger.warning(f"Unknown relationship type: {rel_type}, using IMPACTS")
                 rel_type = "IMPACTS"
 

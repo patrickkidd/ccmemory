@@ -50,6 +50,7 @@ class ReferenceType(enum.StrEnum):
 
 
 class RelationType(enum.StrEnum):
+    Continues = "CONTINUES"
     Supersedes = "SUPERSEDES"
     DependsOn = "DEPENDS_ON"
     Constrains = "CONSTRAINS"
@@ -70,6 +71,7 @@ class Decision(BaseModel):
     revisitTrigger: str | None = None
     topics: list[str] = []
     relatedDecisions: list[RelatedDecision] = []
+    continuesDecision: str | None = None  # Description of prior decision this continues
 
 
 class Correction(BaseModel):

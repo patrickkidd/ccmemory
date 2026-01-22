@@ -298,19 +298,23 @@ RETURN d, other
 
 ## Cross-Reference Relationship Types
 
-Current implementation only has `SUPERSEDES` and `CITES` (similarity-based). Need richer relationship types:
+Decision relationships with their detection methods:
 
 | Relationship | Meaning | Detection |
 |--------------|---------|-----------|
-| `SUPERSEDES` | Replaces prior decision | High embedding similarity (>0.85) |
-| `CITES` | References prior decision | Moderate similarity (>0.8) |
-| `CONSTRAINS` | Limits what another decision can do | LLM detection: "because of X, we can't Y" |
+| `CONTINUES` | Extends/builds on prior decision (same trace) | LLM detection: "building on...", "since we decided..." |
+| `SUPERSEDES` | REPLACES/invalidates prior decision | LLM detection: "instead of X", "changed my mind about..." |
+| `CITES` | References for context (no supersession) | Auto: similarity > 0.85, newer→older only (DAG) |
 | `DEPENDS_ON` | Requires another decision | LLM detection: "this requires X" |
+| `CONSTRAINS` | Limits what another decision can do | LLM detection: "because of X, we can't Y" |
 | `CONFLICTS_WITH` | Incompatible with another | LLM detection: "can't do X if we do Y" |
 | `IMPACTS` | Affects another trace/topic | LLM detection: cross-topic mention |
-| `INFORMS` | Provides context for another | Weaker than DEPENDS_ON |
 
-**Detection prompt addition:** When recording a decision, ask: "Does this relate to any prior decisions? How? (supersedes, constrains, depends on, conflicts with)"
+**IMPORTANT**: SUPERSEDES is NOT auto-created from similarity. Two decisions about the same topic (high similarity) might both be valid — only explicit replacement language triggers SUPERSEDES. CITES is for similarity-based linking with DAG structure (newer decisions cite older ones).
+
+**Decision Traces**: CONTINUES relationships link decisions into traces spanning multiple sessions. A `trace_id` property groups related decisions for efficient querying.
+
+**Detection prompt guidance:** When recording a decision, detect: "Does this continue, replace, or depend on a prior decision?"
 
 ## Project Facts as Binding Instructions
 

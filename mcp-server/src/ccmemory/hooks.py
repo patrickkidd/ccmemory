@@ -233,6 +233,7 @@ def _storeDetection(client, detection: Detection, project: str) -> bool:
                 description=data.description,
                 embedding=embedding,
                 topics=getattr(data, "topics", None) or [],
+                continues_decision=getattr(data, "continuesDecision", None),
                 rationale=data.rationale,
                 revisit_trigger=data.revisitTrigger,
                 detection_confidence=detection.confidence,

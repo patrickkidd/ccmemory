@@ -58,6 +58,19 @@
         .legend-dot.failed { background: hsl(14, 100%, 53%); }
         .legend-dot.fact { background: hsl(198, 71%, 53%); }
         .legend-dot.session { background: hsl(0, 0%, 48%); }
+        .legend-line { display: inline-block; width: 20px; height: 3px; margin-right: 2px; }
+        .legend-line.continues { background: hsl(141, 71%, 48%); }
+        .legend-line.supersedes { background: hsl(348, 100%, 61%); }
+        .legend-line.cites { background: hsl(217, 50%, 65%); border-top: 2px dashed hsl(217, 50%, 65%); height: 0; }
+        .legend-divider { color: hsl(0, 0%, 70%); margin: 0 0.25rem; }
+        #cy { position: relative; }
+        .time-axis { position: absolute; top: 0; left: 0; right: 0; height: 20px; pointer-events: none; z-index: 1; }
+        .time-axis-line { position: absolute; height: 1px; background: hsla(0, 0%, 50%, 0.3); }
+        .time-axis-label { position: absolute; top: 0; font-size: 9px; color: hsla(0, 0%, 40%, 0.7); white-space: nowrap; transform: translateX(-50%); }
+        @media (prefers-color-scheme: dark) {
+            .time-axis-line { background: hsla(0, 0%, 70%, 0.2); }
+            .time-axis-label { color: hsla(0, 0%, 75%, 0.6); }
+        }
         #node-detail { max-height: 200px; overflow-y: auto; display: none; }
         #node-detail.is-visible { display: block; }
         .node-detail-label { font-weight: 600; }
@@ -66,6 +79,8 @@
         #context-preview-box { max-height: 400px; overflow-y: auto; }
     </style>
     <script src="https://unpkg.com/cytoscape@3.28.1/dist/cytoscape.min.js"></script>
+    <script src="https://unpkg.com/dagre@0.8.5/dist/dagre.min.js"></script>
+    <script src="https://unpkg.com/cytoscape-dagre@2.5.0/cytoscape-dagre.js"></script>
 </head>
 <body>
     <nav class="navbar is-dark">
@@ -327,8 +342,29 @@
             const response = await fetch(`/api/graph?${params}`);
             graphData = await response.json();
 
+            // Separate connected nodes from orphans
+            const connectedIds = new Set();
+            graphData.edges.forEach(e => {
+                connectedIds.add(e.source);
+                connectedIds.add(e.target);
+            });
+
+            const connectedNodes = graphData.nodes.filter(n => connectedIds.has(n.id));
+            const orphanNodes = graphData.nodes
+                .filter(n => !connectedIds.has(n.id))
+                .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+
+            // Collect all timestamps for time scale
+            const allNodes = [...connectedNodes, ...orphanNodes];
+            const timestamps = allNodes
+                .map(n => n.timestamp ? new Date(n.timestamp).getTime() : null)
+                .filter(t => t);
+
             const elements = [
-                ...graphData.nodes.map(n => ({
+                ...connectedNodes.map(n => ({
+                    data: { id: n.id, label: n.label, type: n.type, ...n }
+                })),
+                ...orphanNodes.map(n => ({
                     data: { id: n.id, label: n.label, type: n.type, ...n }
                 })),
                 ...graphData.edges.map(e => ({
@@ -348,11 +384,12 @@
                         'label': 'data(label)',
                         'text-valign': 'bottom',
                         'text-halign': 'center',
-                        'font-size': '10px',
-                        'text-wrap': 'ellipsis',
-                        'text-max-width': '80px',
-                        'width': 30,
-                        'height': 30
+                        'font-size': '7px',
+                        'text-wrap': 'wrap',
+                        'text-max-width': '100px',
+                        'text-margin-y': 3,
+                        'width': 25,
+                        'height': 25
                     }},
                     { selector: 'node[type="Decision"]', style: {
                         'background-color': 'hsl(217, 71%, 53%)'
@@ -388,33 +425,92 @@
                         'height': 20
                     }},
                     { selector: 'edge', style: {
-                        'width': 1,
+                        'width': 2,
                         'line-color': '#888',
                         'target-arrow-color': '#888',
                         'target-arrow-shape': 'triangle',
+                        'arrow-scale': 1.2,
                         'curve-style': 'bezier',
-                        'opacity': 0.6
+                        'opacity': 0.7
                     }},
                     { selector: 'edge[type="CITES"]', style: {
                         'line-style': 'dashed',
-                        'line-color': 'hsl(217, 71%, 53%)'
+                        'line-color': 'hsl(217, 50%, 65%)',
+                        'target-arrow-color': 'hsl(217, 50%, 65%)',
+                        'width': 1.5
+                    }},
+                    { selector: 'edge[type="CONTINUES"]', style: {
+                        'line-color': 'hsl(141, 71%, 48%)',
+                        'target-arrow-color': 'hsl(141, 71%, 48%)',
+                        'width': 3
                     }},
                     { selector: 'edge[type="SUPERSEDES"]', style: {
                         'line-color': 'hsl(348, 100%, 61%)',
-                        'width': 2
+                        'target-arrow-color': 'hsl(348, 100%, 61%)',
+                        'width': 3
                     }},
                     { selector: ':selected', style: {
                         'border-width': 3,
                         'border-color': 'hsl(171, 100%, 41%)'
+                    }},
+                    // Time scale markers - major scale row
+                    { selector: 'node[type="timeMarker"]', style: {
+                        'width': 1,
+                        'height': 1,
+                        'background-opacity': 0,
+                        'label': 'data(label)',
+                        'text-valign': 'top',
+                        'text-halign': 'center',
+                        'font-size': '10px',
+                        'font-weight': 'bold',
+                        'color': 'hsl(0, 0%, 50%)',
+                        'text-margin-y': -5
+                    }},
+                    // Time scale markers - node date row
+                    { selector: 'node[type="nodeTimeMarker"]', style: {
+                        'width': 1,
+                        'height': 1,
+                        'background-opacity': 0,
+                        'label': 'data(label)',
+                        'text-valign': 'top',
+                        'text-halign': 'center',
+                        'font-size': '8px',
+                        'color': 'hsl(0, 0%, 65%)',
+                        'text-margin-y': -3
+                    }},
+                    { selector: 'node[type="timeAnchorTop"], node[type="timeAnchorBottom"]', style: {
+                        'width': 1,
+                        'height': 1,
+                        'background-opacity': 0,
+                        'label': ''
+                    }},
+                    { selector: 'edge[type="timeLine"]', style: {
+                        'width': 1,
+                        'line-color': 'hsl(0, 0%, 80%)',
+                        'line-style': 'solid',
+                        'target-arrow-shape': 'none',
+                        'curve-style': 'straight',
+                        'opacity': 0.4,
+                        'z-index': 0
+                    }},
+                    { selector: 'edge[type="nodeTimeLine"]', style: {
+                        'width': 1,
+                        'line-color': 'hsl(0, 0%, 70%)',
+                        'line-style': 'dashed',
+                        'line-dash-pattern': [4, 4],
+                        'target-arrow-shape': 'none',
+                        'curve-style': 'straight',
+                        'opacity': 0.3,
+                        'z-index': 0
                     }}
                 ],
                 layout: {
-                    name: 'cose',
-                    animate: false,
-                    randomize: false,
-                    nodeRepulsion: 8000,
-                    idealEdgeLength: 100,
-                    edgeElasticity: 100
+                    name: 'dagre',
+                    rankDir: 'LR',
+                    nodeSep: 40,
+                    rankSep: 100,
+                    edgeSep: 15,
+                    animate: false
                 }
             });
 
@@ -448,6 +544,161 @@
             cy.on('mouseout', 'node', function() {
                 tooltip.style.display = 'none';
             });
+
+            // Position orphan nodes and add time scale after layout completes
+            setTimeout(() => {
+                if (orphanNodes.length > 0) {
+                    const cyContainer = document.getElementById('cy');
+                    const width = cyContainer.offsetWidth;
+                    const orphanY = 40;
+                    const padding = 60;
+                    const availableWidth = width - padding * 2;
+                    const spacing = orphanNodes.length > 1
+                        ? Math.min(100, availableWidth / (orphanNodes.length - 1))
+                        : 0;
+
+                    orphanNodes.forEach((n, i) => {
+                        const node = cy.getElementById(n.id);
+                        if (node) {
+                            node.position({ x: padding + i * spacing, y: orphanY });
+                        }
+                    });
+                }
+
+                // Add time scale markers as graph elements
+                addTimeScale(allNodes, timestamps);
+                cy.fit(undefined, 40);
+            }, 50);
+        }
+
+        function addTimeScale(allNodes, timestamps) {
+            if (timestamps.length < 2) return;
+
+            const minTime = Math.min(...timestamps);
+            const maxTime = Math.max(...timestamps);
+            const timeRange = maxTime - minTime;
+            if (timeRange < 3600000) return;
+
+            const contentNodes = cy.nodes().filter(n => !n.data('type')?.startsWith('time'));
+            if (contentNodes.length === 0) return;
+
+            const bb = contentNodes.boundingBox();
+            const scaleRowY = bb.y1 - 60;
+            const nodeRowY = bb.y1 - 30;
+            const topY = bb.y1 - 15;
+            const bottomY = bb.y2 + 30;
+
+            const timeToX = [];
+            contentNodes.forEach(n => {
+                const ts = n.data('timestamp');
+                if (ts) {
+                    const t = new Date(ts).getTime();
+                    timeToX.push({ time: t, x: n.position('x'), nodeId: n.id() });
+                }
+            });
+            timeToX.sort((a, b) => a.x - b.x);
+
+            if (timeToX.length < 2) return;
+
+            // Linear interpolation function for time -> x
+            const interpolateX = (t) => {
+                const sorted = [...timeToX].sort((a, b) => a.time - b.time);
+                if (t <= sorted[0].time) return sorted[0].x;
+                if (t >= sorted[sorted.length - 1].time) return sorted[sorted.length - 1].x;
+                for (let i = 0; i < sorted.length - 1; i++) {
+                    if (t >= sorted[i].time && t <= sorted[i + 1].time) {
+                        const ratio = (t - sorted[i].time) / (sorted[i + 1].time - sorted[i].time);
+                        return sorted[i].x + ratio * (sorted[i + 1].x - sorted[i].x);
+                    }
+                }
+                return sorted[0].x;
+            };
+
+            const dayMs = 86400000;
+            const weekMs = 7 * dayMs;
+            const monthMs = 30 * dayMs;
+            let interval, formatMajor, formatNode;
+
+            if (timeRange > 180 * dayMs) {
+                interval = monthMs;
+                formatMajor = d => d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+                formatNode = d => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+            } else if (timeRange > 30 * dayMs) {
+                interval = weekMs;
+                formatMajor = d => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                formatNode = d => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+            } else if (timeRange > 7 * dayMs) {
+                interval = dayMs;
+                formatMajor = d => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                formatNode = d => d.toLocaleDateString('en-US', { weekday: 'short' });
+            } else {
+                interval = dayMs;
+                formatMajor = d => d.toLocaleDateString('en-US', { weekday: 'short', day: 'numeric' });
+                formatNode = d => d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+            }
+
+            const startTime = Math.floor(minTime / interval) * interval;
+            const markerElements = [];
+
+            for (let t = startTime; t <= maxTime + interval; t += interval) {
+                if (t < minTime - interval) continue;
+
+                const x = interpolateX(t);
+                const id = `time-major-${t}`;
+
+                markerElements.push(
+                    { data: { id: `${id}-top`, type: 'timeAnchorTop' }, position: { x, y: topY } },
+                    { data: { id: `${id}-bottom`, type: 'timeAnchorBottom' }, position: { x, y: bottomY } },
+                    { data: { id: `${id}-label`, type: 'timeMarker', label: formatMajor(new Date(t)) }, position: { x, y: scaleRowY } },
+                    { data: { id: `${id}-line`, source: `${id}-top`, target: `${id}-bottom`, type: 'timeLine' } }
+                );
+            }
+
+            timeToX.forEach(item => {
+                const nodeId = item.nodeId;
+                const x = item.x;
+                const ts = contentNodes.getElementById(nodeId).data('timestamp');
+                const id = `time-node-${nodeId}`;
+                const nodeLabel = ts ? formatNode(new Date(ts)) : '';
+
+                markerElements.push(
+                    { data: { id: `${id}-top`, type: 'timeAnchorTop' }, position: { x, y: topY } },
+                    { data: { id: `${id}-bottom`, type: 'timeAnchorBottom' }, position: { x, y: bottomY } },
+                    { data: { id: `${id}-label`, type: 'nodeTimeMarker', label: nodeLabel, nodeX: x }, position: { x, y: nodeRowY } },
+                    { data: { id: `${id}-line`, source: `${id}-top`, target: `${id}-bottom`, type: 'nodeTimeLine' } }
+                );
+            });
+
+            cy.add(markerElements);
+
+            cy.nodes('[type="timeMarker"], [type="nodeTimeMarker"], [type="timeAnchorTop"], [type="timeAnchorBottom"]').forEach(n => {
+                n.style('z-index', 0);
+            });
+
+            function updateLabelVisibility() {
+                const zoom = cy.zoom();
+                const labelWidthPx = 60;
+                const minSpacing = labelWidthPx / zoom;
+
+                const nodeTimeLabels = cy.nodes('[type="nodeTimeMarker"]').sort((a, b) => a.data('nodeX') - b.data('nodeX'));
+                const majorLabels = cy.nodes('[type="timeMarker"]').sort((a, b) => a.position('x') - b.position('x'));
+
+                majorLabels.forEach(n => n.style('opacity', 1));
+
+                let lastVisibleX = -Infinity;
+                nodeTimeLabels.forEach(n => {
+                    const x = n.data('nodeX');
+                    if (x - lastVisibleX >= minSpacing) {
+                        n.style('opacity', 1);
+                        lastVisibleX = x;
+                    } else {
+                        n.style('opacity', 0);
+                    }
+                });
+            }
+
+            updateLabelVisibility();
+            cy.on('zoom pan', updateLabelVisibility);
         }
 
         function showNodeDetail(node) {
@@ -538,7 +789,10 @@
                 .map(i => `<span class="legend-item"><span class="legend-dot ${i.css}"></span>${i.label}</span>`)
                 .join('');
             if (selected.length > 0) {
-                html += '<span class="legend-item"><span class="legend-dot session"></span>Session</span>';
+                html += ' <span class="legend-divider">|</span> ';
+                html += '<span class="legend-item"><span class="legend-line continues"></span>CONTINUES</span>';
+                html += '<span class="legend-item"><span class="legend-line supersedes"></span>SUPERSEDES</span>';
+                html += '<span class="legend-item"><span class="legend-line cites"></span>CITES</span>';
             }
             legend.innerHTML = html;
         }

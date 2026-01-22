@@ -109,7 +109,7 @@ At session start, context is injected in this format:
 
 | Node | Key Fields | Organization |
 |------|------------|--------------|
-| Decision | id, project, timestamp, description, rationale, status, topics, embedding | By project + timestamp |
+| Decision | id, project, timestamp, description, rationale, status, topics, trace_id, embedding | By project + timestamp |
 | Correction | id, project, timestamp, wrong_belief, right_belief, severity, topics, embedding | By project + timestamp |
 | Exception | id, project, timestamp, rule_broken, justification, scope, topics, embedding | By project + timestamp |
 | Insight | id, project, timestamp, summary, category, detail, topics, embedding | By project + timestamp |
@@ -124,14 +124,21 @@ This makes backfill operations idempotent.
 
 ### Cross-Reference Relationships
 
-| Relationship | Meaning |
-|--------------|---------|
-| SUPERSEDES | New decision replaces/updates a prior one (auto: similarity >0.85) |
-| CITES | New decision references a prior one (auto: similarity 0.8-0.85) |
-| DEPENDS_ON | Decision requires another to hold |
-| CONSTRAINS | Decision limits options in another area |
-| CONFLICTS_WITH | Decision contradicts another |
-| IMPACTS | Decision affects another area |
+| Relationship | Meaning | Detection |
+|--------------|---------|-----------|
+| CONTINUES | Decision extends/builds on a prior one (same trace) | LLM detection |
+| SUPERSEDES | Decision replaces/invalidates a prior one | LLM detection only |
+| CITES | Decision references a related prior one | Auto: similarity >0.85, newer→older only |
+| DEPENDS_ON | Decision requires another to hold | LLM detection |
+| CONSTRAINS | Decision limits options in another area | LLM detection |
+| CONFLICTS_WITH | Decision contradicts another | LLM detection |
+| IMPACTS | Decision affects another area | LLM detection |
+
+**Note:** SUPERSEDES is NOT auto-created from similarity. Only explicit replacement language triggers SUPERSEDES. CITES is used for similarity-based linking with DAG structure (newer decisions cite older ones, never the reverse).
+
+### Decision Traces
+
+Decisions can be grouped into traces via `trace_id` property. CONTINUES relationships link decisions within a trace across multiple sessions. This enables tracking decision evolution over time without relying on ephemeral session boundaries.
 
 ### Node Types (Domain 2 — Reference Knowledge)
 
@@ -221,7 +228,7 @@ Detected from conversation exchanges via LLM analysis:
 
 | Type | Fields | When Detected |
 |------|--------|---------------|
-| Decision | description, rationale, revisitTrigger, topics, relatedDecisions | User makes explicit choice |
+| Decision | description, rationale, revisitTrigger, topics, relatedDecisions, continuesDecision | User makes explicit choice |
 | Correction | wrongBelief, rightBelief, severity, topics | User corrects Claude |
 | Exception | ruleBroken, justification, scope, topics | User grants one-time exception |
 | Insight | summary, category, implications, topics | Non-obvious realization |

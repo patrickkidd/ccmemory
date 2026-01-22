@@ -103,6 +103,7 @@ def status():
         click.echo(f"Total Insights: {metrics['total_insights']}")
         click.echo(f"Decision Reuse Rate: {metrics['decision_reuse_rate']*100:.1f}%")
         click.echo(f"Graph Density: {metrics['graph_density']:.2f}")
+        client.close()
 
     except Exception as e:
         click.echo(f"Neo4j: Not connected ({e})", err=True)
@@ -189,6 +190,7 @@ def search(query, limit):
                     or str(item)[:80]
                 )
                 click.echo(f"  [{score:.2f}] {desc}")
+    client.close()
 
 
 @main.command()
@@ -203,6 +205,7 @@ def stale(days):
 
     if not results:
         click.echo("No stale decisions found")
+        client.close()
         return
 
     click.echo(f"Stale decisions (>{days} days old):")
@@ -210,6 +213,7 @@ def stale(days):
         click.echo(f"  - {d.get('description', 'No description')[:60]}")
         if d.get("revisit_trigger"):
             click.echo(f"    Revisit trigger: {d['revisit_trigger']}")
+    client.close()
 
 
 @main.command()
@@ -226,6 +230,7 @@ def promote(branch):
         click.echo(f"Promoted decisions from branch: {branch}")
     else:
         click.echo("Promoted all developmental decisions")
+    client.close()
 
 
 @main.command()
@@ -254,6 +259,165 @@ def stats(fmt):
         click.echo(f"  Re-explanation Rate: {metrics['reexplanation_rate']*100:.1f}%")
         click.echo(f"  Decision Reuse Rate: {metrics['decision_reuse_rate']*100:.1f}%")
         click.echo(f"  Graph Density: {metrics['graph_density']:.2f}")
+    client.close()
+
+
+@main.command("migrate-edges")
+@click.argument("project")
+@click.option("--dry-run", is_flag=True, help="Show what would be done without making changes")
+@click.option("--infer-continues", is_flag=True, help="Infer CONTINUES from topic+time+similarity")
+@click.option("--days", default=7, help="Days window for inferring CONTINUES relationships")
+def migrate_edges(project, dry_run, infer_continues, days):
+    """Migrate decision edges: remove auto-SUPERSEDES, rebuild CITES.
+
+    This fixes graphs created with the old similarity-based SUPERSEDES logic.
+    SUPERSEDES should only be created via explicit LLM detection, not similarity.
+
+    Steps:
+    1. Delete all SUPERSEDES edges with {auto: true}
+    2. Delete all CITES edges (will be recreated)
+    3. Recreate CITES edges for similarity > 0.8
+    4. Optionally infer CONTINUES edges (--infer-continues)
+    """
+    from .graph import getClient
+
+    client = getClient()
+
+    with client.driver.session() as session:
+        # Count existing edges
+        counts = session.run(
+            """
+            MATCH (d:Decision {project: $project})-[r]->(other:Decision)
+            WHERE type(r) IN ['SUPERSEDES', 'CITES', 'CONTINUES']
+            RETURN type(r) as rel_type, count(r) as cnt,
+                   sum(CASE WHEN r.auto = true THEN 1 ELSE 0 END) as auto_cnt
+            """,
+            project=project,
+        )
+        edge_counts = {r["rel_type"]: {"total": r["cnt"], "auto": r["auto_cnt"]} for r in counts}
+
+        click.echo(f"Project: {project}")
+        click.echo(f"\nExisting edges:")
+        for rel_type, cnts in edge_counts.items():
+            click.echo(f"  {rel_type}: {cnts['total']} total ({cnts['auto']} auto)")
+
+        if dry_run:
+            click.echo("\n[DRY RUN] Would perform:")
+            click.echo(f"  - Delete {edge_counts.get('SUPERSEDES', {}).get('auto', 0)} auto-SUPERSEDES edges")
+            click.echo(f"  - Delete {edge_counts.get('CITES', {}).get('total', 0)} CITES edges")
+            click.echo("  - Recreate CITES as DAG (newer→older, similarity > 0.85)")
+            if infer_continues:
+                click.echo(f"  - Infer CONTINUES for same-topic decisions within {days} days")
+            client.close()
+            return
+
+        # Step 1: Delete auto-SUPERSEDES
+        del_sup = session.run(
+            """
+            MATCH (d:Decision {project: $project})-[r:SUPERSEDES {auto: true}]->(other:Decision)
+            DELETE r
+            RETURN count(r) as deleted
+            """,
+            project=project,
+        )
+        sup_deleted = del_sup.single()["deleted"]
+        click.echo(f"\nDeleted {sup_deleted} auto-SUPERSEDES edges")
+
+        # Step 2: Delete all CITES (will recreate)
+        del_cites = session.run(
+            """
+            MATCH (d:Decision {project: $project})-[r:CITES]->(other:Decision)
+            DELETE r
+            RETURN count(r) as deleted
+            """,
+            project=project,
+        )
+        cites_deleted = del_cites.single()["deleted"]
+        click.echo(f"Deleted {cites_deleted} CITES edges")
+
+        # Step 3: Recreate CITES as DAG (newer→older, similarity > 0.85)
+        decisions = session.run(
+            """
+            MATCH (d:Decision {project: $project})
+            WHERE d.embedding IS NOT NULL
+            RETURN d.id as id, d.embedding as embedding, d.timestamp as timestamp
+            ORDER BY d.timestamp ASC
+            """,
+            project=project,
+        )
+        decision_list = list(decisions)
+        click.echo(f"\nProcessing {len(decision_list)} decisions for CITES edges (DAG: newer→older, >0.85)...")
+
+        cites_created = 0
+        for dec in decision_list:
+            result = session.run(
+                """
+                MATCH (d:Decision {id: $decision_id})
+                CALL db.index.vector.queryNodes('decision_embedding', 5, $embedding)
+                YIELD node, score
+                WHERE node.project = $project
+                  AND node.id <> $decision_id
+                  AND node.timestamp < d.timestamp
+                  AND score > 0.85
+                  AND NOT EXISTS { (d)-[:CITES]->(node) }
+                CREATE (d)-[:CITES {similarity: score, auto: true}]->(node)
+                RETURN count(*) as created
+                """,
+                decision_id=dec["id"],
+                embedding=dec["embedding"],
+                project=project,
+            )
+            cites_created += result.single()["created"]
+
+        click.echo(f"Created {cites_created} CITES edges")
+
+        # Step 4: Optionally infer CONTINUES
+        if infer_continues:
+            click.echo(f"\nInferring CONTINUES edges (topic overlap + {days} day window + similarity > 0.85)...")
+
+            # Find decision pairs with:
+            # - Same topic overlap
+            # - Newer decision within N days of older
+            # - High similarity
+            cont_result = session.run(
+                """
+                MATCH (newer:Decision {project: $project}), (older:Decision {project: $project})
+                WHERE newer.embedding IS NOT NULL
+                  AND older.embedding IS NOT NULL
+                  AND newer.timestamp > older.timestamp
+                  AND newer.timestamp < older.timestamp + duration({days: $days})
+                  AND any(t IN newer.topics WHERE t IN older.topics)
+                  AND NOT EXISTS { (newer)-[:CONTINUES]->(older) }
+                  AND NOT EXISTS { (newer)-[:SUPERSEDES]->(older) }
+                WITH newer, older,
+                     reduce(dot = 0.0, i IN range(0, size(newer.embedding)-1) |
+                            dot + newer.embedding[i] * older.embedding[i]) /
+                     (sqrt(reduce(s1 = 0.0, x IN newer.embedding | s1 + x*x)) *
+                      sqrt(reduce(s2 = 0.0, y IN older.embedding | s2 + y*y))) as similarity
+                WHERE similarity > 0.85
+                CREATE (newer)-[:CONTINUES {similarity: similarity, auto: true, inferred: true}]->(older)
+                RETURN count(*) as created
+                """,
+                project=project,
+                days=days,
+            )
+            cont_created = cont_result.single()["created"]
+            click.echo(f"Created {cont_created} inferred CONTINUES edges")
+
+        # Final counts
+        final_counts = session.run(
+            """
+            MATCH (d:Decision {project: $project})-[r]->(other:Decision)
+            WHERE type(r) IN ['SUPERSEDES', 'CITES', 'CONTINUES']
+            RETURN type(r) as rel_type, count(r) as cnt
+            """,
+            project=project,
+        )
+        click.echo(f"\nFinal edge counts:")
+        for r in final_counts:
+            click.echo(f"  {r['rel_type']}: {r['cnt']}")
+
+    client.close()
 
 
 if __name__ == "__main__":

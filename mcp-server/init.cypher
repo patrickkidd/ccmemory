@@ -17,6 +17,7 @@ CREATE INDEX decision_time IF NOT EXISTS FOR (d:Decision) ON (d.timestamp);
 CREATE INDEX decision_project_time IF NOT EXISTS FOR (d:Decision) ON (d.project, d.timestamp);
 CREATE INDEX decision_status IF NOT EXISTS FOR (d:Decision) ON (d.status);
 CREATE INDEX decision_project_status IF NOT EXISTS FOR (d:Decision) ON (d.project, d.status);
+CREATE INDEX decision_trace IF NOT EXISTS FOR (d:Decision) ON (d.trace_id);
 
 CREATE INDEX correction_project IF NOT EXISTS FOR (c:Correction) ON (c.project);
 CREATE INDEX correction_time IF NOT EXISTS FOR (c:Correction) ON (c.timestamp);
@@ -119,3 +120,24 @@ CREATE INDEX retrieval_time IF NOT EXISTS FOR (r:Retrieval) ON (r.timestamp);
 
 CREATE CONSTRAINT session_id IF NOT EXISTS FOR (s:Session) REQUIRE s.id IS UNIQUE;
 CREATE INDEX session_project IF NOT EXISTS FOR (s:Session) ON (s.project);
+
+// === RELATIONSHIP TYPES ===
+// CONTINUES: Decision extends/follows from a prior decision (same decision trace)
+//   - Created when LLM detects continuation language ("building on...", "since we decided...")
+//   - Links decisions within a trace across sessions
+//   - Properties: {similarity: float, auto: bool}
+//
+// CITES: Decision references a related prior decision for context
+//   - Auto-created for similarity > 0.85 between decisions in same project
+//   - Unidirectional: newer decision → older decision (DAG structure)
+//   - Properties: {similarity: float, auto: true}
+//
+// SUPERSEDES: Decision replaces/invalidates a prior decision
+//   - Only created via explicit LLM detection ("instead of...", "changed from...")
+//   - NOT auto-created from similarity
+//   - Properties: {reason: string, auto: false}
+//
+// DEPENDS_ON: Decision requires another decision to hold
+// CONSTRAINS: Decision limits what another decision can do
+// CONFLICTS_WITH: Decisions are incompatible
+// IMPACTS: Decision affects another trace/topic
